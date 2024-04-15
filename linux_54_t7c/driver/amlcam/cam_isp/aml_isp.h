@@ -171,6 +171,7 @@ struct isp_dev_t {
 	struct aml_buffer wreg_buff;
 	struct aml_buffer ptnr_buff;
 	struct aml_buffer mcnr_buff;
+	struct aml_buffer radi_buff;
 
 	const struct isp_dev_ops *ops;
 	const struct emb_ops_t *emb_ops;
@@ -212,6 +213,8 @@ struct isp_dev_ops {
 	int (*hw_fill_rreg_buff)(struct isp_dev_t *isp_dev);
 	int (*hw_fill_gisp_rreg_buff)(struct isp_global_info *g_isp_info);
 	u32 *(*hw_status)(struct isp_dev_t *isp_dev);
+	void (*hw_write)(struct isp_dev_t *isp_dev, u32 addr, u32 val);
+	u32 (*hw_read)(struct isp_dev_t *isp_dev, u32 addr);
 };
 
 int isp_subdev_resume(struct isp_dev_t *isp_dev);

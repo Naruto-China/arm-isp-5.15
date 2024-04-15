@@ -39,6 +39,13 @@
 
 static struct isp_dev_t *g_isp_dev[4];
 
+volatile uint32_t debug_isp_irq_in_count = 0;
+volatile uint32_t debug_isp_irq_out_count = 0;
+
+#ifdef DEBUG_TEST_MIPI_RESET
+volatile int debug_test_mipi_reset = 1;
+#endif
+
 static const struct aml_format isp_subdev_formats[] = {
 	{0, 0, 0, 0, MEDIA_BUS_FMT_SBGGR8_1X8, 0, 1, 8},
 	{0, 0, 0, 0, MEDIA_BUS_FMT_SGBRG8_1X8, 0, 1, 8},
@@ -59,6 +66,109 @@ static const struct aml_format isp_subdev_formats[] = {
 	{0, 0, 0, 0, MEDIA_BUS_FMT_YUYV8_2X8, 0, 1, 8},
 	{0, 0, 0, 0, MEDIA_BUS_FMT_YVYU8_2X8, 0, 1, 8},
 };
+
+static const char *isp_reg_usage_str = {
+	"Usage:\n"
+	"echo r addr(H) > /sys/devices/platform/fe3b0000.isp0/reg;\n"
+	"echo w addr(H) value(H) > /sys/devices/platform/fe3b0000.isp0/reg;\n"
+};
+
+void parse_param(
+	char *buf_orig, char **parm)
+{
+	char *ps, *token;
+	unsigned int n = 0;
+	char delim1[3] = " ";
+	char delim2[2] = "\n";
+
+	ps = buf_orig;
+	strcat(delim1, delim2);
+	while (1) {
+		token = strsep(&ps, delim1);
+		if (token == NULL)
+			break;
+		if (*token == '\0')
+			continue;
+		parm[n++] = token;
+		pr_debug("%s %d of parm : %s \n", __func__, n, token);
+	}
+}
+
+ssize_t reg_read(
+	struct device *dev,
+	struct device_attribute *attr,
+	char *buf)
+{
+	return sprintf(buf, "%s\n", isp_reg_usage_str);
+}
+
+ssize_t reg_write(
+	struct device *dev, struct device_attribute *attr,
+	char const *buf, size_t size)
+{
+
+	char *buf_orig, *parm[8] = {NULL};
+	long val = 0;
+	unsigned int reg_addr, reg_val, i;
+	struct isp_dev_t *isp_dev = dev->driver_data;
+	ssize_t ret = size;
+	unsigned int isp_sw_base = 0x4000;
+
+	if (!buf)
+		return ret;
+
+	buf_orig = kstrdup(buf, GFP_KERNEL);
+	if (!buf_orig)
+		return ret;
+	parse_param(buf_orig, (char **)&parm);
+
+	if (!parm[0]) {
+		ret = -EINVAL;
+		goto Err;
+	}
+
+	if (!strcmp(parm[0], "w")) {
+		if (!parm[1] || (kstrtoul(parm[1], 16, &val) < 0)) {
+			ret = -EINVAL;
+			goto Err;
+		}
+		reg_addr = val;
+		if (!parm[2] || (kstrtoul(parm[2], 16, &val) < 0)) {
+			ret = -EINVAL;
+			goto Err;
+		}
+		reg_val = val;
+		if (isp_dev->ops->hw_write) {
+			isp_dev->ops->hw_write(isp_dev, (isp_sw_base + (reg_addr << 2)), reg_val);
+			pr_err("ISP WRITE[0x%x]=0x%08x\n", reg_addr, reg_val);
+		} else {
+			pr_err("%s need init isp dev ops first \n", __func__);
+			ret = -EINVAL;
+			goto Err;
+		}
+	} else if (!strcmp(parm[0], "r")) {
+		if (!parm[1] || (kstrtoul(parm[1], 16, &val) < 0)) {
+			ret = -EINVAL;
+			goto Err;
+		}
+		reg_addr = val;
+		if (isp_dev->ops->hw_read) {
+			reg_val = isp_dev->ops->hw_read(isp_dev, (isp_sw_base + (reg_addr << 2)));
+			pr_err("ISP READ[0x%x]=0x%08x\n", reg_addr, reg_val);
+		} else {
+			pr_err("%s need init isp dev ops first \n", __func__);
+			ret = -EINVAL;
+			goto Err;
+		}
+	} else {
+		pr_err("unsupprt cmd!\n");
+	}
+Err:
+	kfree(buf_orig);
+	return ret;
+}
+
+DEVICE_ATTR(reg, S_IRUGO | S_IWUSR, reg_read, reg_write);
 
 struct isp_dev_t *isp_subdrv_get_dev(int index)
 {
@@ -94,6 +204,14 @@ static int isp_subdrv_reg_buf_alloc(struct isp_dev_t *isp_dev)
 	isp_dev->rreg_buff.vaddr[AML_PLANE_A] = virtaddr + wsize;
 	isp_dev->rreg_buff.vmaddr[AML_PLANE_A] = vmaddr + wsize;
 
+	wsize = 4 * 1024;
+	virtaddr = dma_alloc_coherent(isp_dev->dev, wsize, &paddr, GFP_KERNEL);
+
+	isp_dev->radi_buff.nplanes = 1;
+	isp_dev->radi_buff.bsize = wsize;
+	isp_dev->radi_buff.addr[AML_PLANE_A] = paddr;
+	isp_dev->radi_buff.vaddr[AML_PLANE_A] = virtaddr;
+
 	pr_debug("reg alloc\n");
 
 	return 0;
@@ -123,6 +241,16 @@ static int isp_subdrv_reg_buf_free(struct isp_dev_t *isp_dev)
 	isp_dev->rreg_buff.addr[AML_PLANE_A] = 0x0000;
 	isp_dev->rreg_buff.vaddr[AML_PLANE_A] = NULL;
 	isp_dev->rreg_buff.vmaddr[AML_PLANE_A] = NULL;
+
+	paddr = isp_dev->radi_buff.addr[AML_PLANE_A];
+	vaddr = isp_dev->radi_buff.vaddr[AML_PLANE_A];
+	bsize = 4 * 1024;
+
+	if (vaddr)
+		dma_free_coherent(isp_dev->dev, bsize, vaddr, (dma_addr_t)paddr);
+
+	isp_dev->radi_buff.addr[AML_PLANE_A] = 0x0000;
+	isp_dev->radi_buff.vaddr[AML_PLANE_A] = NULL;
 
 	pr_debug("reg free\n");
 
@@ -403,6 +531,29 @@ static int isp_subdev_set_format(void *priv, void *s_fmt, void *m_fmt)
 	return rtn;
 }
 
+int isp_subdev_pad_link_validate(void *priv, void *link, void *source_fmt, void * sink_fmt)
+{
+	struct isp_dev_t *isp_dev = priv;
+	struct v4l2_subdev_format *isp_source_fmt = source_fmt;
+	struct v4l2_subdev_format *isp_sink_fmt = sink_fmt;
+
+	if (isp_sink_fmt->format.code == MEDIA_BUS_FMT_YUYV8_2X8 ||
+		isp_sink_fmt->format.code == MEDIA_BUS_FMT_YVYU8_2X8) {
+		// isp input is YUYV (or YVYU)
+		// allow adapter output all 4 yuv422 format.
+		if (isp_source_fmt->format.code == MEDIA_BUS_FMT_YUYV8_2X8 ||
+			isp_source_fmt->format.code == MEDIA_BUS_FMT_YVYU8_2X8 ||
+			isp_source_fmt->format.code == MEDIA_BUS_FMT_VYUY8_2X8 ||
+			isp_source_fmt->format.code == MEDIA_BUS_FMT_UYVY8_2X8 )
+			return 0;
+		else
+			return -1;
+	}
+
+	// return ENOIOCTLCMD, lead to checked by  v4l2_subdev_link_validate_default.
+	return -ENOIOCTLCMD;
+}
+
 static int isp_subdev_stream_on(void *priv)
 {
 	struct isp_dev_t *isp_dev = priv;
@@ -467,6 +618,7 @@ static const struct aml_sub_ops isp_subdev_ops = {
 	.stream_on = isp_subdev_stream_on,
 	.stream_off = isp_subdev_stream_off,
 	.log_status = isp_subdev_log_status,
+	.pad_link_validate = isp_subdev_pad_link_validate,
 };
 
 static int isp_subdev_set_ctrl(struct v4l2_ctrl *ctrl)
@@ -538,16 +690,22 @@ static irqreturn_t isp_subdev_irq_handler(int irq, void *dev)
 	u64 start_time, end_time, diff;
 	start_time = ktime_get_real_ns();
 #endif
+
+	debug_isp_irq_in_count++;
+
 	if (isp_dev->isp_status == STATUS_STOP) {
 		if (aml_adap_global_get_vdev() == isp_dev->index) {
 			pr_err("ISP%d: Stoped and Irq ignore\n", isp_dev->index);
 			aml_adap_global_done_completion();
 		}
+		debug_isp_irq_out_count++;
 		return IRQ_HANDLED;
 	}
 
-	if (aml_adap_global_get_vdev() != isp_dev->index)
+	if (aml_adap_global_get_vdev() != isp_dev->index) {
+		debug_isp_irq_out_count++;
 		return IRQ_HANDLED;
+	}
 
 	spin_lock_irqsave(&isp_dev->irq_lock, flags);
 
@@ -555,6 +713,13 @@ static irqreturn_t isp_subdev_irq_handler(int irq, void *dev)
 	if (status & 0x1) {
 		isp_dev->frm_cnt ++;
 		for (id = AML_ISP_STREAM_0; id < AML_ISP_STREAM_MAX; id++) {
+#ifdef DEBUG_TEST_MIPI_RESET
+			if (debug_test_mipi_reset) {
+				pr_err("debug_test_mipi_reset 1. no call to video irq handler\n");
+				continue;
+			}
+#endif
+
 			video = &isp_dev->video[id];
 			if (video->ops->cap_irq_handler)
 				video->ops->cap_irq_handler(video, status);
@@ -563,6 +728,9 @@ static irqreturn_t isp_subdev_irq_handler(int irq, void *dev)
 	}
 
 	spin_unlock_irqrestore(&isp_dev->irq_lock, flags);
+
+	debug_isp_irq_out_count++;
+
 #ifdef IRQ_TIME_DEBUG
 	end_time = ktime_get_real_ns();
 	diff = end_time - start_time;

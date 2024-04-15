@@ -16,7 +16,9 @@
 * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 *
 */
-
+#ifdef pr_fmt
+#undef pr_fmt
+#endif
 #define pr_fmt(fmt)  "aml-csiphy:%s:%d: " fmt, __func__, __LINE__
 #include <linux/version.h>
 #include <linux/io.h>
@@ -81,23 +83,6 @@ static int csiphy_of_parse_endpoint_node(struct device_node *node,
 	c_asd->data_lanes = vep.bus.mipi_csi2.num_data_lanes;
 
 	return 0;
-}
-
-static void csiphy_of_parse_ports_clock_mod(struct csiphy_dev_t *csiphy_dev) {
-	struct device_node *node = NULL;
-	u32 clock_mode = 0;
-	struct v4l2_async_notifier *notifier = csiphy_dev->notifier;
-	struct device *dev = csiphy_dev->dev;
-	v4l2_async_notifier_init(notifier);
-	for_each_endpoint_of_node(dev->of_node, node) {
-		if (!of_device_is_available(node))
-			continue;
-		if (!of_property_read_u32(node, "clock-continue", &clock_mode)) {
-			pr_info("clock-continue = %u \n", clock_mode);
-		}
-		of_node_put(node);
-	}
-	csiphy_dev->clock_mode = clock_mode;
 }
 
 static int csiphy_of_parse_ports(struct csiphy_dev_t *csiphy_dev)
@@ -385,6 +370,32 @@ static int csiphy_subdev_get_link_freq(struct media_entity *entity, s64 *link_fr
 	return 0;
 }
 
+static int csiphy_subdev_get_clock_mode(struct media_entity *entity)
+{
+	int clock_mode = 0;
+	struct media_entity *sensor;
+	struct v4l2_subdev *subdev;
+	struct v4l2_ctrl *ctrl;
+
+	sensor = csiphy_subdev_get_sensor_entity(entity);
+	if (!sensor) {
+		pr_err("Failed to get sensor entity\n");
+		return -ENODEV;
+	}
+
+	subdev = media_entity_to_v4l2_subdev(sensor);
+
+	ctrl = v4l2_ctrl_find(subdev->ctrl_handler, V4L2_CID_AML_CLOCK_MODE);
+	if (!ctrl) {
+		pr_err("Failed to get clock mode, using fault value\n");
+	} else {
+		clock_mode = ctrl->val;
+	}
+	pr_debug("clock mode: %d \n", clock_mode);
+	return clock_mode;
+
+}
+
 static int csiphy_subdev_get_lanes(struct media_entity *entity, int *data_lanes)
 {
 	struct media_entity *sensor;
@@ -425,6 +436,7 @@ static int csiphy_subdev_stream_on(void *priv)
 
 	csiphy_dev->lanecnt = nlanes;
 	csiphy_dev->lanebps = link_freq;
+	csiphy_dev->clock_mode = csiphy_subdev_get_clock_mode(&csiphy_dev->sd.entity);
 
 	return csiphy_dev->ops->hw_start(csiphy_dev, csiphy_dev->index, nlanes, link_freq);
 }
@@ -536,7 +548,7 @@ static int csiphy_proc_show(struct seq_file *proc_entry, void *arg ) {
 
 	seq_printf(proc_entry, " ------- PubAttr Info ------- \n");
 	seq_printf(proc_entry, "LaneCnt" "\t" "LaneBps" "\t" "\n");
-	seq_printf(proc_entry, "%d \t %d \t \n\n",
+	seq_printf(proc_entry, "%d \t %ld \t \n\n",
 					c_dev->lanecnt,
 					c_dev->lanebps );
 
@@ -698,8 +710,6 @@ int aml_csiphy_subdev_init(void *c_dev)
 	csiphy_dev->notifier = &cam_dev->notifier;
 	csiphy_dev->index = cam_dev->index;
 	platform_set_drvdata(pdev, csiphy_dev);
-
-	csiphy_of_parse_ports_clock_mod(csiphy_dev);
 
 	rtn = csiphy_of_parse_ports(csiphy_dev);
 	if (rtn) {

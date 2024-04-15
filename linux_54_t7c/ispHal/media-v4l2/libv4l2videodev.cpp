@@ -184,10 +184,7 @@ int v4l2_video_q_buf(struct media_entity *entity,
         return ret;
     }
 
-    media_dbg(entity->media,
-            "queue buffer success \n");
     return ret;
-
 }
 
 
@@ -208,10 +205,7 @@ int v4l2_video_dq_buf(struct media_entity *entity,
         return ret;
     }
 
-    media_dbg(entity->media,
-            "dq buffer success \n");
     return ret;
-
 }
 
 
