@@ -495,8 +495,6 @@ static void csiphy_subdev_power_off(struct csiphy_dev_t *csiphy_dev)
 	clk_disable_unprepare(csiphy_dev->csiphy_clk1);
 
 	pm_runtime_put_sync(csiphy_dev->dev);
-	pm_runtime_disable(csiphy_dev->dev);
-	dev_pm_domain_detach(csiphy_dev->dev, true);
 }
 
 void csiphy_subdev_suspend(struct csiphy_dev_t *csiphy_dev)
@@ -510,18 +508,12 @@ void csiphy_subdev_suspend(struct csiphy_dev_t *csiphy_dev)
 		clk_disable_unprepare(csiphy_dev->csiphy_clk1);
 
 	pm_runtime_put_sync(csiphy_dev->dev);
-	pm_runtime_disable(csiphy_dev->dev);
-	dev_pm_domain_detach(csiphy_dev->dev, true);
-
 	dev_info(csiphy_dev->dev, "%s out \n", __func__);
 }
 
 int csiphy_subdev_resume(struct csiphy_dev_t *csiphy_dev)
 {
 	int rtn = 0;
-	dev_pm_domain_attach(csiphy_dev->dev, true);
-
-	pm_runtime_enable(csiphy_dev->dev);
 	pm_runtime_get_sync(csiphy_dev->dev);
 
 	if (!__clk_is_enabled(csiphy_dev->csiphy_clk)) {

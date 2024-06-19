@@ -827,17 +827,12 @@ static void isp_subdev_power_off(struct isp_dev_t *isp_dev)
 	dev_info(isp_dev->dev, "%s in\n", __func__);
 
 	pm_runtime_put_sync(isp_dev->dev);
-	pm_runtime_disable(isp_dev->dev);
-	dev_pm_domain_detach(isp_dev->dev, true);
 	dev_info(isp_dev->dev, "%s out \n", __func__);
 }
 
 int isp_subdev_resume(struct isp_dev_t *isp_dev)
 {
 	int rtn = 0;
-
-	dev_pm_domain_attach(isp_dev->dev, true);
-	pm_runtime_enable(isp_dev->dev);
 	pm_runtime_get_sync(isp_dev->dev);
 
 	if (!__clk_is_enabled(isp_dev->isp_clk)) {
@@ -859,10 +854,6 @@ void isp_subdev_suspend(struct isp_dev_t *isp_dev)
 		clk_disable_unprepare(isp_dev->isp_clk);
 
 	pm_runtime_put_sync(isp_dev->dev);
-	pm_runtime_disable(isp_dev->dev);
-
-	dev_pm_domain_detach(isp_dev->dev, true);
-
 	dev_info(isp_dev->dev, "%s out\n", __func__);
 }
 
