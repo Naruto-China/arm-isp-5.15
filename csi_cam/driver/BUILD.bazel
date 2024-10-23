@@ -1,0 +1,18 @@
+load("//build/kernel/kleaf:kernel.bzl", "kernel_module")
+
+kernel_module(
+    name = "csi_camera",
+    srcs = glob(
+        ["**"],
+        exclude = [
+            "BUILD.bazel",
+        ],
+    ),
+    outs = [
+        "amlsens/amlsens.ko",
+    ],
+    kernel_build = "//common:amlogic",
+    visibility = [
+        "//common:__pkg__",
+    ],
+)
