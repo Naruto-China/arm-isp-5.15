@@ -217,6 +217,9 @@ struct isp_dev_ops {
 	u32 (*hw_read)(struct isp_dev_t *isp_dev, u32 addr);
 };
 
+int isp_subdev_power_on(struct isp_dev_t *isp_dev);
+void isp_subdev_power_off(struct isp_dev_t *isp_dev);
+
 int isp_subdev_resume(struct isp_dev_t *isp_dev);
 void isp_subdev_suspend(struct isp_dev_t *isp_dev);
 struct isp_dev_t *isp_subdrv_get_dev(int index);

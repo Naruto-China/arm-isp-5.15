@@ -239,6 +239,40 @@ static int csiphy_of_parse_version(struct csiphy_dev_t *csiphy_dev)
 	return rtn;
 }
 
+static int csiphy_get_clks(struct csiphy_dev_t *csiphy_dev)
+{
+	if (csiphy_dev->csiphy_clk == NULL) {
+		csiphy_dev->csiphy_clk = devm_clk_get(csiphy_dev->dev, "mipi_phy_clk");
+		if (IS_ERR_OR_NULL(csiphy_dev->csiphy_clk)) {
+			dev_err(csiphy_dev->dev, "Error to get csiphy_clk\n");
+			return PTR_ERR(csiphy_dev->csiphy_clk);
+		}
+	}
+
+	if (csiphy_dev->csiphy_clk1 == NULL) {
+		csiphy_dev->csiphy_clk1 = devm_clk_get(csiphy_dev->dev, "mipi_phy_clk1");
+		if (IS_ERR_OR_NULL(csiphy_dev->csiphy_clk1)) {
+			dev_err(csiphy_dev->dev, "Error to get csiphy_clk1\n");
+			return PTR_ERR(csiphy_dev->csiphy_clk1);
+		}
+	}
+	return 0;
+}
+
+static int csiphy_put_clks(struct csiphy_dev_t *csiphy_dev)
+{
+	if (!IS_ERR_OR_NULL(csiphy_dev->csiphy_clk)) {
+		devm_clk_put(csiphy_dev->dev, csiphy_dev->csiphy_clk);
+		csiphy_dev->csiphy_clk = NULL;
+	}
+	if (!IS_ERR_OR_NULL(csiphy_dev->csiphy_clk1)) {
+		devm_clk_put(csiphy_dev->dev, csiphy_dev->csiphy_clk1);
+		csiphy_dev->csiphy_clk1 = NULL;
+	}
+
+	return 0;
+}
+
 static int csiphy_of_parse_dev(struct csiphy_dev_t *csiphy_dev)
 {
 	int rtn = -1;
@@ -253,19 +287,6 @@ static int csiphy_of_parse_dev(struct csiphy_dev_t *csiphy_dev)
 	if (!csiphy_dev->csi_aphy) {
 		rtn = -EINVAL;
 		goto error_rtn;
-	}
-
-	//csiphy_dev->csiphy_clk = devm_clk_get(csiphy_dev->dev, "cts_mipi_csi_phy_clk");
-	csiphy_dev->csiphy_clk = devm_clk_get(csiphy_dev->dev, "mipi_phy_clk");
-	if (IS_ERR(csiphy_dev->csiphy_clk)) {
-		dev_err(csiphy_dev->dev, "Error to get csiphy_clk\n");
-		return PTR_ERR(csiphy_dev->csiphy_clk);
-	}
-
-	csiphy_dev->csiphy_clk1 = devm_clk_get(csiphy_dev->dev, "mipi_phy_clk1");
-	if (IS_ERR(csiphy_dev->csiphy_clk1)) {
-		dev_err(csiphy_dev->dev, "Error to get csiphy_clk1\n");
-		return PTR_ERR(csiphy_dev->csiphy_clk1);
 	}
 
 	rtn = 0;
@@ -461,13 +482,25 @@ static const struct aml_sub_ops csiphy_subdev_ops = {
 	.log_status = csiphy_subdev_log_status,
 };
 
-static int csiphy_subdev_power_on(struct csiphy_dev_t *csiphy_dev)
+void csiphy_subdev_suspend(struct csiphy_dev_t *csiphy_dev)
+{
+	dev_err(csiphy_dev->dev, "%s in\n", __func__);
+
+	pm_runtime_put_sync(csiphy_dev->dev);
+
+	if (__clk_is_enabled(csiphy_dev->csiphy_clk))
+		clk_disable_unprepare(csiphy_dev->csiphy_clk);
+
+	if (__clk_is_enabled(csiphy_dev->csiphy_clk1))
+		clk_disable_unprepare(csiphy_dev->csiphy_clk1);
+}
+
+int csiphy_subdev_resume(struct csiphy_dev_t *csiphy_dev)
 {
 	int rtn = 0;
-	dev_info(csiphy_dev->dev, "%s in\n", __func__);
 
-	dev_pm_domain_attach(csiphy_dev->dev, true);
-	pm_runtime_enable(csiphy_dev->dev);
+	dev_err(csiphy_dev->dev, "%s in\n", __func__);
+
 	pm_runtime_get_sync(csiphy_dev->dev);
 
 	if (!__clk_is_enabled(csiphy_dev->csiphy_clk)) {
@@ -476,58 +509,56 @@ static int csiphy_subdev_power_on(struct csiphy_dev_t *csiphy_dev)
 		if (rtn)
 			dev_err(csiphy_dev->dev, "Error to enable csiphy_clk\n");
 	}
-
 	if (!__clk_is_enabled(csiphy_dev->csiphy_clk1)) {
-
 		clk_set_rate(csiphy_dev->csiphy_clk1, 200000000);
-		rtn = clk_prepare_enable(csiphy_dev->csiphy_clk1);
-		if (rtn)
-			dev_err(csiphy_dev->dev, "Error to enable csiphy_clk1n");
-	}
-	return rtn;
-}
-
-static void csiphy_subdev_power_off(struct csiphy_dev_t *csiphy_dev)
-{
-	dev_info(csiphy_dev->dev, "%s in\n", __func__);
-
-	clk_disable_unprepare(csiphy_dev->csiphy_clk);
-	clk_disable_unprepare(csiphy_dev->csiphy_clk1);
-
-	pm_runtime_put_sync(csiphy_dev->dev);
-}
-
-void csiphy_subdev_suspend(struct csiphy_dev_t *csiphy_dev)
-{
-	dev_info(csiphy_dev->dev, "%s in\n", __func__);
-
-	if (__clk_is_enabled(csiphy_dev->csiphy_clk))
-		clk_disable_unprepare(csiphy_dev->csiphy_clk);
-
-	if (__clk_is_enabled(csiphy_dev->csiphy_clk1))
-		clk_disable_unprepare(csiphy_dev->csiphy_clk1);
-
-	pm_runtime_put_sync(csiphy_dev->dev);
-	dev_info(csiphy_dev->dev, "%s out \n", __func__);
-}
-
-int csiphy_subdev_resume(struct csiphy_dev_t *csiphy_dev)
-{
-	int rtn = 0;
-	pm_runtime_get_sync(csiphy_dev->dev);
-
-	if (!__clk_is_enabled(csiphy_dev->csiphy_clk)) {
-		rtn = clk_prepare_enable(csiphy_dev->csiphy_clk);
-		if (rtn)
-			dev_err(csiphy_dev->dev, "Error to enable csiphy_clk\n");
-	}
-	if (!__clk_is_enabled(csiphy_dev->csiphy_clk1)) {
 		rtn = clk_prepare_enable(csiphy_dev->csiphy_clk1);
 		if (rtn)
 			dev_err(csiphy_dev->dev, "Error to enable csiphy_clk1\n");
 	}
 	return rtn;
 }
+
+void csiphy_subdev_power_off(struct csiphy_dev_t *csiphy_dev)
+{
+	dev_err(csiphy_dev->dev, "%s in\n", __func__);
+
+	csiphy_subdev_suspend(csiphy_dev);
+
+	pm_runtime_disable(csiphy_dev->dev);
+
+	csiphy_put_clks(csiphy_dev);
+}
+
+int csiphy_subdev_power_on(struct csiphy_dev_t *csiphy_dev)
+{
+	int rtn = 0;
+
+	dev_err(csiphy_dev->dev, "%s in\n", __func__);
+
+	rtn = csiphy_get_clks(csiphy_dev);
+	if (rtn) {
+		dev_err(csiphy_dev->dev, "get clks from dts fail");
+		return rtn;
+	}
+
+	pm_runtime_enable(csiphy_dev->dev);
+
+	// force resume once on poweron.
+	pm_runtime_get_sync(csiphy_dev->dev);
+
+	clk_set_rate(csiphy_dev->csiphy_clk, 200000000);
+	rtn = clk_prepare_enable(csiphy_dev->csiphy_clk);
+	if (rtn)
+		dev_err(csiphy_dev->dev, "Error to enable csiphy_clk\n");
+
+	clk_set_rate(csiphy_dev->csiphy_clk1, 200000000);
+	rtn = clk_prepare_enable(csiphy_dev->csiphy_clk1);
+	if (rtn)
+		dev_err(csiphy_dev->dev, "Error to enable csiphy_clk1\n");
+
+	return rtn;
+}
+
 
 static int csiphy_proc_show(struct seq_file *proc_entry, void *arg ) {
 
@@ -721,6 +752,12 @@ int aml_csiphy_subdev_init(void *c_dev)
 		return rtn;
 	}
 
+	// csiphy0 has PDID_T7_MIPI_ISP
+	// csiphy2 not have any PDID
+	if (of_count_phandle_with_args(csiphy_dev->dev->of_node, "power-domains",
+		"#power-domain-cells") == 1)
+		dev_pm_domain_attach(csiphy_dev->dev, true);
+
 	rtn = csiphy_subdev_power_on(csiphy_dev);
 	if (rtn) {
 		dev_err(csiphy_dev->dev, "Failed to power on\n");
@@ -744,11 +781,16 @@ void aml_csiphy_subdev_deinit(void *c_dev)
 
 	csiphy_subdev_power_off(csiphy_dev);
 
+	// csiphy0 has PDID_T7_MIPI_ISP
+	// csiphy2 not have any PDID
+	if (of_count_phandle_with_args(csiphy_dev->dev->of_node, "power-domains",
+		"#power-domain-cells") == 1)
+		dev_pm_domain_detach(csiphy_dev->dev, true);
+
 	csiphy_iounmap_resource(csiphy_dev);
 
 	csiphy_notifier_cleanup(csiphy_dev);
 
-	devm_clk_put(csiphy_dev->dev, csiphy_dev->csiphy_clk);
 
 	dev_info(csiphy_dev->dev, "CSIPHY%u: subdev deinit\n", csiphy_dev->index);
 }

@@ -408,6 +408,45 @@ int adap_fe_done_buf(struct adapter_dev_t *a_dev)
 	return 0;
 }
 
+static int adap_get_clks(struct adapter_dev_t *adap_dev)
+{
+	if (adap_dev->adap_clk == NULL) {
+		adap_dev->adap_clk = devm_clk_get(adap_dev->dev, "mipi_isp_clk");
+		if (IS_ERR_OR_NULL(adap_dev->adap_clk)) {
+			dev_err(adap_dev->dev,"Error to get mipi_isp_clk\n");
+			return PTR_ERR(adap_dev->adap_clk);
+		}
+	}
+
+#ifndef T7C_CHIP
+	if (adap_dev->vapb_clk == NULL) {
+		adap_dev->vapb_clk = devm_clk_get(adap_dev->dev, "vapb_clk");
+		if (IS_ERR_OR_NULL(adap_dev->vapb_clk)) {
+			dev_err(adap_dev->dev,"Error to get vapb_clk\n");
+			return PTR_ERR(adap_dev->vapb_clk);
+		}
+	}
+#endif
+
+	return 0;
+}
+
+static int adap_put_clks(struct adapter_dev_t *adap_dev)
+{
+	if (!IS_ERR_OR_NULL(adap_dev->adap_clk)) {
+		devm_clk_put(adap_dev->dev, adap_dev->adap_clk);
+		adap_dev->adap_clk = NULL;
+	}
+#ifndef T7C_CHIP
+	if (!IS_ERR_OR_NULL(adap_dev->vapb_clk)) {
+		devm_clk_put(adap_dev->dev, adap_dev->vapb_clk);
+		adap_dev->vapb_clk = NULL;
+	}
+#endif
+
+	return 0;
+}
+
 static int adap_of_parse_dev(struct adapter_dev_t *adap_dev)
 {
 	int rtn = 0;
@@ -420,11 +459,6 @@ static int adap_of_parse_dev(struct adapter_dev_t *adap_dev)
 		rtn = -EINVAL;
 		goto error_rtn;
 	}
-
-	adap_dev->adap_clk = devm_clk_get(adap_dev->dev, "mipi_isp_clk");
-#ifndef T7C_CHIP
-	adap_dev->vapb_clk = devm_clk_get(adap_dev->dev, "vapb_clk");
-#endif
 
 error_rtn:
 	return rtn;
@@ -849,36 +883,6 @@ static int adap_subdev_ctrls_init(struct adapter_dev_t *adap_dev)
 	return rtn;
 }
 
-static int adap_subdev_power_on(struct adapter_dev_t *adap_dev)
-{
-	int rtn = 0;
-	dev_info(adap_dev->dev, "%s in\n", __func__);
-
-#ifndef T7C_CHIP
-	rtn = clk_prepare_enable(adap_dev->vapb_clk);
-	if (rtn)
-		pr_err("Error to enable vapb clk\n");
-#endif
-	if (!__clk_is_enabled(adap_dev->adap_clk)) {
-
-		clk_set_rate(adap_dev->adap_clk, 666666666);
-		rtn = clk_prepare_enable(adap_dev->adap_clk);
-		if (rtn)
-			dev_err(adap_dev->dev, "Error to enable adap_clk(isp) clk\n");
-
-	}
-	return rtn;
-}
-
-static void adap_subdev_power_off(struct adapter_dev_t *adap_dev)
-{
-	dev_info(adap_dev->dev, "%s in\n", __func__);
-
-	if (adap_dev->index == AML_CAM_4) {
-		clk_disable_unprepare(adap_dev->wrmif_clk);
-	}
-}
-
 void adap_subdev_suspend(struct adapter_dev_t *adap_dev)
 {
 	dev_info(adap_dev->dev, "%s in\n", __func__);
@@ -892,10 +896,39 @@ int adap_subdev_resume(struct adapter_dev_t *adap_dev)
 	int rtn = 0;
 
 	if (!__clk_is_enabled(adap_dev->adap_clk)) {
+		clk_set_rate(adap_dev->adap_clk, 666666666);
 		rtn = clk_prepare_enable(adap_dev->adap_clk);
 		if (rtn)
 			dev_err(adap_dev->dev, "Error to enable adap_clk(isp) clk\n");
 	}
+	return rtn;
+}
+
+void adap_subdev_power_off(struct adapter_dev_t *adap_dev)
+{
+	dev_err(adap_dev->dev, "%s in\n", __func__);
+
+	adap_subdev_suspend(adap_dev);
+	adap_put_clks(adap_dev);
+}
+
+int adap_subdev_power_on(struct adapter_dev_t *adap_dev)
+{
+	int rtn = 0;
+	dev_err(adap_dev->dev, "%s in\n", __func__);
+
+	rtn = adap_get_clks(adap_dev);
+	if (rtn) {
+		dev_err(adap_dev->dev, "get clks from dts fail");
+		return rtn;
+	}
+
+	// force resume once on poweron.
+	clk_set_rate(adap_dev->adap_clk, 666666666);
+	rtn = clk_prepare_enable(adap_dev->adap_clk);
+	if (rtn)
+		dev_err(adap_dev->dev, "Error to enable adap_clk(isp) clk\n");
+
 	return rtn;
 }
 
@@ -1119,9 +1152,6 @@ void aml_adap_subdev_deinit(void *c_dev)
 
 	tasklet_kill(&adap_dev->irq_tasklet);
 	devm_free_irq(adap_dev->dev, adap_dev->irq, adap_dev);
-
-	if (adap_dev->index == AML_CAM_4)
-		devm_clk_put(adap_dev->dev, adap_dev->wrmif_clk);
 
 	dev_info(adap_dev->dev, "ADAP%u: subdev deinit\n", adap_dev->index);
 }

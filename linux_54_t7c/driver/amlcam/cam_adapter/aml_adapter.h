@@ -234,9 +234,11 @@ struct adapter_dev_t {
 	struct device *dev;
 	struct platform_device *pdev;
 
-	struct clk *wrmif_clk;
-    struct clk *adap_clk;
-    struct clk *vapb_clk;
+	struct clk *adap_clk; // for t7c
+#ifndef T7C_CHIP
+	struct clk *vapb_clk; // for c3
+#endif
+
 	int irq;
 	spinlock_t irq_lock;
 	struct tasklet_struct irq_tasklet;
@@ -265,6 +267,9 @@ struct adapter_dev_t {
 
 void adap_subdev_suspend(struct adapter_dev_t *adap_dev);
 int adap_subdev_resume(struct adapter_dev_t *adap_dev);
+
+void adap_subdev_power_off(struct adapter_dev_t *adap_dev);
+int adap_subdev_power_on(struct adapter_dev_t *adap_dev);
 
 int aml_adap_subdev_init(void *c_dev);
 void aml_adap_subdev_deinit(void *c_dev);

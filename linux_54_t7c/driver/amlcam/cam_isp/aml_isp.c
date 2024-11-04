@@ -757,6 +757,26 @@ static void isp_subdev_irq_tasklet(unsigned long data)
 	aml_adap_global_done_completion();
 }
 
+static int isp_subdev_get_clks(struct isp_dev_t *isp_dev)
+{
+	if (isp_dev->isp_clk == NULL) {
+		isp_dev->isp_clk = devm_clk_get(isp_dev->dev, "mipi_isp_clk");
+		if (IS_ERR_OR_NULL(isp_dev->isp_clk)) {
+			dev_err(isp_dev->dev, "Error to get isp_clk\n");
+			return PTR_ERR(isp_dev->isp_clk);
+		}
+	}
+	return 0;
+}
+
+static void isp_subdev_put_clks(struct isp_dev_t *isp_dev)
+{
+	if (!IS_ERR_OR_NULL(isp_dev->isp_clk)) {
+		devm_clk_put(isp_dev->dev, isp_dev->isp_clk);
+		isp_dev->isp_clk = NULL;
+	}
+}
+
 static int isp_subdev_parse_dev(struct isp_dev_t *isp_dev)
 {
 	int rtn = -EINVAL;
@@ -768,12 +788,6 @@ static int isp_subdev_parse_dev(struct isp_dev_t *isp_dev)
 	if (!isp_dev->irq) {
 		dev_err(isp_dev->dev, "Error to parse irq\n");
 		return rtn;
-	}
-
-	isp_dev->isp_clk = devm_clk_get(isp_dev->dev, "mipi_isp_clk");
-	if (IS_ERR(isp_dev->isp_clk)) {
-		dev_err(isp_dev->dev, "Error to get isp_clk\n");
-		return PTR_ERR(isp_dev->isp_clk);
 	}
 
 	res = platform_get_resource(isp_dev->pdev, IORESOURCE_MEM, 0);
@@ -794,68 +808,67 @@ static int isp_subdev_parse_dev(struct isp_dev_t *isp_dev)
 	return 0;
 }
 
-static int isp_subdev_power_on(struct isp_dev_t *isp_dev)
-{
-	int rtn = 0;
-
-	dev_pm_domain_attach(isp_dev->dev, true);
-	pm_runtime_enable(isp_dev->dev);
-	pm_runtime_get_sync(isp_dev->dev);
-
-	if (!__clk_is_enabled(isp_dev->isp_clk)) {
-
-		switch (isp_dev->index) {
-		case 0:
-		case 1:
-		case 2:
-		case 3:
-			clk_set_rate(isp_dev->isp_clk, 666666666);
-		break;
-		default:
-			dev_err(isp_dev->dev, "ISP%d: Error to set clk rate\n", isp_dev->index);
-		break;
-		}
-		rtn = clk_prepare_enable(isp_dev->isp_clk);
-		if (rtn)
-			dev_err(isp_dev->dev, "Error to enable isp_clk\n");
-	}
-	return rtn;
-}
-
-static void isp_subdev_power_off(struct isp_dev_t *isp_dev)
-{
-	dev_info(isp_dev->dev, "%s in\n", __func__);
-
-	pm_runtime_put_sync(isp_dev->dev);
-	dev_info(isp_dev->dev, "%s out \n", __func__);
-}
-
 int isp_subdev_resume(struct isp_dev_t *isp_dev)
 {
 	int rtn = 0;
+
 	pm_runtime_get_sync(isp_dev->dev);
 
 	if (!__clk_is_enabled(isp_dev->isp_clk)) {
+		clk_set_rate(isp_dev->isp_clk, 666666666);
 		rtn = clk_prepare_enable(isp_dev->isp_clk);
 		if (rtn)
 			dev_err(isp_dev->dev, "Error to enable isp_clk\n");
 	}
-
-
 
 	return rtn;
 }
 
 void isp_subdev_suspend(struct isp_dev_t *isp_dev)
 {
-	dev_info(isp_dev->dev, "%s in\n", __func__);
+	dev_err(isp_dev->dev, "%s in\n", __func__);
+
+	pm_runtime_put_sync(isp_dev->dev);
 
 	if (__clk_is_enabled(isp_dev->isp_clk))
 		clk_disable_unprepare(isp_dev->isp_clk);
 
-	pm_runtime_put_sync(isp_dev->dev);
-	dev_info(isp_dev->dev, "%s out\n", __func__);
+	dev_err(isp_dev->dev, "%s out\n", __func__);
 }
+
+int isp_subdev_power_on(struct isp_dev_t *isp_dev)
+{
+	int rtn = 0;
+
+	rtn = isp_subdev_get_clks(isp_dev);
+	if (rtn) {
+		dev_err(isp_dev->dev, "get clks from dts fail");
+		return rtn;
+	}
+
+	pm_runtime_enable(isp_dev->dev);
+
+	// force resume once on poweron.
+	pm_runtime_get_sync(isp_dev->dev);
+
+	clk_set_rate(isp_dev->isp_clk, 666666666);
+	rtn = clk_prepare_enable(isp_dev->isp_clk);
+	if (rtn)
+		dev_err(isp_dev->dev, "Error to enable isp_clk\n");
+
+	return rtn;
+}
+
+void isp_subdev_power_off(struct isp_dev_t *isp_dev)
+{
+	dev_err(isp_dev->dev, "%s in\n", __func__);
+	isp_subdev_suspend(isp_dev);
+
+	pm_runtime_disable(isp_dev->dev);
+
+	isp_subdev_put_clks(isp_dev);
+}
+
 
 int aml_isp_subdev_init(void *c_dev)
 {
@@ -918,6 +931,7 @@ int aml_isp_subdev_init(void *c_dev)
 	spin_lock_init(&isp_dev->irq_lock);
 	tasklet_init(&isp_dev->irq_tasklet, isp_subdev_irq_tasklet, (unsigned long)isp_dev);
 
+	dev_pm_domain_attach(isp_dev->dev, true);
 	isp_subdev_power_on(isp_dev);
 
 	isp_subdrv_reg_buf_alloc(isp_dev);
@@ -941,12 +955,11 @@ void aml_isp_subdev_deinit(void *c_dev)
 	tasklet_kill(&isp_dev->irq_tasklet);
 
 	isp_subdev_power_off(isp_dev);
+	dev_pm_domain_detach(isp_dev->dev, true);
 
 	devm_free_irq(isp_dev->dev, isp_dev->irq, isp_dev);
 
 	devm_iounmap(isp_dev->dev, isp_dev->base);
-
-	devm_clk_put(isp_dev->dev, isp_dev->isp_clk);
 
 	isp_subdrv_reg_buf_free(isp_dev);
 

@@ -581,7 +581,8 @@ int ov08a10_power_suspend(struct device *dev)
 	struct v4l2_subdev *sd = i2c_get_clientdata(client);
 	struct ov08a10 *ov08a10 = to_ov08a10(sd);
 
-	gpiod_set_value_cansleep(ov08a10->gpio->rst_gpio, 0);
+	dev_err(dev, "%s\n", __func__);
+	ov08a10_power_off(ov08a10->dev, ov08a10->gpio);
 
 	return 0;
 }
@@ -592,7 +593,8 @@ int ov08a10_power_resume(struct device *dev)
 	struct v4l2_subdev *sd = i2c_get_clientdata(client);
 	struct ov08a10 *ov08a10 = to_ov08a10(sd);
 
-	gpiod_set_value_cansleep(ov08a10->gpio->rst_gpio, 1);
+	dev_err(dev, "%s\n", __func__);
+	ov08a10_power_on(ov08a10->dev, ov08a10->gpio);
 
 	return 0;
 }

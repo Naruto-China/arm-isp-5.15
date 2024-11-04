@@ -147,9 +147,6 @@ static int imx290_write_reg(struct imx290 *imx290, u16 addr, u8 value)
 		}
 	}
 
-	if (ret)
-		dev_err(imx290->dev, "I2C write failed for addr: %x, ret %d\n", addr, ret);
-
 	return ret;
 }
 
@@ -162,8 +159,9 @@ static int imx290_set_register_array(struct imx290 *imx290,
 
 	for (i = 0; i < num_settings; ++i, ++settings) {
 		ret = imx290_write_reg(imx290, settings->reg, settings->val);
-		if (ret < 0)
+		if (ret < 0) {
 			return ret;
+		}
 	}
 
 	return 0;
@@ -632,8 +630,8 @@ int imx290_power_suspend(struct device *dev)
 	struct i2c_client *client = to_i2c_client(dev);
 	struct v4l2_subdev *sd = i2c_get_clientdata(client);
 	struct imx290 *imx290 = to_imx290(sd);
-
-	gpiod_set_value_cansleep(imx290->gpio->rst_gpio, 0);
+	dev_err(dev, "%s\n", __func__);
+	imx290_power_off(dev, imx290->gpio);
 
 	return 0;
 }
@@ -643,8 +641,9 @@ int imx290_power_resume(struct device *dev)
 	struct i2c_client *client = to_i2c_client(dev);
 	struct v4l2_subdev *sd = i2c_get_clientdata(client);
 	struct imx290 *imx290 = to_imx290(sd);
+	dev_err(dev, "%s\n", __func__);
 
-	gpiod_set_value_cansleep(imx290->gpio->rst_gpio, 1);
+	imx290_power_on(imx290->dev, imx290->gpio);
 
 	return 0;
 }
