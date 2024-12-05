@@ -38,6 +38,9 @@
 #define AML_ADAPTER_NAME "isp-adapter"
 //#define ADAPTER_WDR_DUMP_LONG_FRAME
 
+volatile uint32_t debug_fe_irq_in_count = 0;
+volatile uint32_t debug_fe_irq_out_count = 0;
+
 static struct adapter_dev_t *g_adap_dev[4];
 
 static const struct aml_format adap_support_formats[] = {
@@ -100,6 +103,47 @@ int write_data_to_buf(char *buf, int size)
 	return ret;
 }
 #endif
+
+static void fe_check_timeout(struct timer_list *t)
+{
+	struct adapter_dev_t *adap_dev_t = container_of(t, struct adapter_dev_t, fe_check_timer);
+	struct cam_device *cam_dev = container_of(adap_dev_t, struct cam_device, adap_dev);
+
+	mod_timer(&cam_dev->isp_dev.isp_check_timer, jiffies + msecs_to_jiffies(1000));
+
+	pr_err("fe irq in %d,  out %d", debug_fe_irq_in_count, debug_fe_irq_out_count);
+
+	// adapter off
+	if (cam_dev->adap_dev.ops->hw_stop) {
+		cam_dev->adap_dev.ops->hw_stop(&(cam_dev->adap_dev));
+		pr_err("adap hw_stop");
+	}
+	if (cam_dev->adap_dev.ops->hw_irq_dis)
+		cam_dev->adap_dev.ops->hw_irq_dis(&(cam_dev->adap_dev));
+
+	// csiphy off
+	cam_dev->csiphy_dev.ops->hw_stop(&(cam_dev->csiphy_dev), cam_dev->csiphy_dev.index );
+
+	// adapter re-init
+	if (cam_dev->adap_dev.ops->hw_reset)
+		cam_dev->adap_dev.ops->hw_reset(&(cam_dev->adap_dev));
+
+	if (cam_dev->adap_dev.ops->hw_init)
+		cam_dev->adap_dev.ops->hw_init(&(cam_dev->adap_dev));
+
+	// adapter on
+	if (cam_dev->adap_dev.ops->hw_start) {
+		cam_dev->adap_dev.ops->hw_start(&(cam_dev->adap_dev));
+		pr_err("adap hw_start");
+	}
+	if (cam_dev->adap_dev.ops->hw_irq_en)
+		cam_dev->adap_dev.ops->hw_irq_en(&(cam_dev->adap_dev));
+	pr_err("adap reset done");
+	// csiphy on
+	cam_dev->csiphy_dev.ops->hw_start(&(cam_dev->csiphy_dev), cam_dev->csiphy_dev.index, cam_dev->csiphy_dev.lanecnt, cam_dev->csiphy_dev.lanebps);
+
+	pr_err("leave");
+}
 
 struct adapter_dev_t *adap_get_dev(int index)
 {
@@ -529,6 +573,7 @@ static irqreturn_t adap_irq_handler_offline(int irq, void *dev)
 	unsigned long flags;
 	struct adapter_dev_t *adap_dev = dev;
 
+	debug_fe_irq_in_count++;
 	/**
 	* Execute the hw_interrupt_status function before detecting wstatus
 	* reason: if adap_subdev_stream_off function sets wstatus to STATUS_STOP in advance, \
@@ -536,8 +581,10 @@ static irqreturn_t adap_irq_handler_offline(int irq, void *dev)
 	*/
 	status = adap_dev->ops->hw_interrupt_status(adap_dev);
 
-	if (adap_dev->wstatus != STATUS_START)
+	if (adap_dev->wstatus != STATUS_START) {
+		debug_fe_irq_out_count++;
 		return IRQ_HANDLED;
+	}
 
 	spin_lock_irqsave(&adap_dev->irq_lock, flags);
 
@@ -549,8 +596,11 @@ static irqreturn_t adap_irq_handler_offline(int irq, void *dev)
 		tasklet_schedule(&adap_dev->irq_tasklet);
 #endif
 	}
+	debug_fe_irq_out_count++;
 
 	spin_unlock_irqrestore(&adap_dev->irq_lock, flags);
+
+	mod_timer(&adap_dev->fe_check_timer, jiffies + msecs_to_jiffies(1000));
 
 	return IRQ_HANDLED;
 }
@@ -594,10 +644,16 @@ static int adap_request_irq_offline(struct adapter_dev_t *adap_dev)
 static int adap_subdev_stream_on(void *priv)
 {
 	struct adapter_dev_t *adap_dev = priv;
+	int rtn = 0;
 
 	adap_dev->wstatus = STATUS_START;
 
-	adap_alloc_raw_buffs(adap_dev);
+	rtn = adap_alloc_raw_buffs(adap_dev);
+	if (rtn < 0)
+	{
+		pr_err("Failed to alloc raw buff stream on fail");
+		return rtn;
+	}
 
 	adap_wdr_cfg_buf(adap_dev);
 
@@ -610,6 +666,8 @@ static int adap_subdev_stream_on(void *priv)
 
 	if (adap_dev->ops->hw_irq_en)
 		adap_dev->ops->hw_irq_en(adap_dev);
+
+	mod_timer(&adap_dev->fe_check_timer, jiffies + msecs_to_jiffies(1000));
 
 	return 0;
 }
@@ -630,6 +688,10 @@ static void adap_subdev_stream_off(void *priv)
 		adap_dev->ops->hw_irq_dis(adap_dev);
 
 	adap_free_raw_buffs(adap_dev);
+
+	del_timer(&adap_dev->fe_check_timer);
+
+	debug_fe_irq_in_count = debug_fe_irq_out_count = 0;
 }
 
 static int adap_subdev_convert_fmt(struct adapter_dev_t *adap_dev,
@@ -1130,6 +1192,8 @@ int aml_adap_subdev_init(void *c_dev)
 	rtn = adap_request_irq_offline(adap_dev);
 	if (rtn)
 		adap_iounmap_resource(adap_dev);
+
+	timer_setup(&(adap_dev->fe_check_timer ), fe_check_timeout, 0);
 
 	dev_info(adap_dev->dev, "ADAP%u: subdev init\n", adap_dev->index);
 

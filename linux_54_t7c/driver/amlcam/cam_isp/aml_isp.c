@@ -170,6 +170,19 @@ Err:
 
 DEVICE_ATTR(reg, S_IRUGO | S_IWUSR, reg_read, reg_write);
 
+static void isp_check_timeout(struct timer_list *t)
+{
+	struct isp_dev_t * isp_dev = container_of(t, struct isp_dev_t, isp_check_timer);
+	int i = 0;
+
+	pr_err("isp irq in %d,  out %d", debug_isp_irq_in_count, debug_isp_irq_out_count);
+
+	for (i = 0; i < AML_ISP_STREAM_MAX; i++)
+	{
+		vb2_queue_error(&(isp_dev->video[i].vb2_q));
+	}
+}
+
 struct isp_dev_t *isp_subdrv_get_dev(int index)
 {
 	if (index >= 4) {
@@ -604,6 +617,7 @@ static void isp_subdev_stream_off(void *priv)
 
 	isp_subdev_ptnr_buf_free(isp_dev);
 	isp_subdev_mcnr_buf_free(isp_dev);
+	debug_isp_irq_in_count = debug_isp_irq_out_count = 0;
 }
 
 static void isp_subdev_log_status(void *priv)
@@ -937,6 +951,8 @@ int aml_isp_subdev_init(void *c_dev)
 	isp_subdrv_reg_buf_alloc(isp_dev);
 
 	isp_global_init(isp_dev);
+
+	timer_setup(&(isp_dev->isp_check_timer ), isp_check_timeout, 0);
 
 	dev_info(isp_dev->dev, "ISP%u: subdev init\n", isp_dev->index);
 

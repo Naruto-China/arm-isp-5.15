@@ -168,9 +168,7 @@ static int isp_cap_irq_handler(void *video, int status)
 	}
 
 	if (1 == vd->dq_check_timer_working) {
-		del_timer(&cam_dev->dq_check_timer);
-		pr_info("stop dq check timer");
-		vd->dq_check_timer_working = 0;
+		mod_timer(&cam_dev->isp_dev.isp_check_timer, jiffies + msecs_to_jiffies(1000));
 	}
 
 	// drop frame; multiple videos dq & q; open another video while one video is streaming

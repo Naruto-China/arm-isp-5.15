@@ -562,7 +562,7 @@ static int video_start_streaming(struct vb2_queue *queue, unsigned int count)
 
 	if (video->pipe->streaming_count == 1) {
 		pr_info("start dq check timer on vid %d", video->id);
-		mod_timer(&cam_dev->dq_check_timer, jiffies + msecs_to_jiffies(500));
+		mod_timer(&cam_dev->isp_dev.isp_check_timer, jiffies + msecs_to_jiffies(1000));
 		video->dq_check_timer_working = 1;
 	}
 
@@ -579,6 +579,8 @@ static void video_stop_streaming(struct vb2_queue *queue)
 	struct v4l2_subdev *sensor_subdev = NULL;
 	struct aml_video *video = vb2_get_drv_priv(queue);
 	struct media_entity *entity = &video->vdev.entity;
+	struct cam_device * cam_dev;
+	cam_dev = aml_video_to_cam_device(video);
 
 	mutex_lock(&one_entry_lock);
 
@@ -644,6 +646,12 @@ static void video_stop_streaming(struct vb2_queue *queue)
 
 	if (video->ops->cap_flush_buffer)
 		video->ops->cap_flush_buffer(video);
+
+	if (video->dq_check_timer_working == 1) {
+		pr_info("del timer on vid %d", video->id);
+		del_timer(&cam_dev->isp_dev.isp_check_timer);
+		video->dq_check_timer_working = 0;
+	}
 
 	mutex_unlock(&one_entry_lock);
 

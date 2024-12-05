@@ -175,8 +175,9 @@ struct isp_dev_t {
 
 	const struct isp_dev_ops *ops;
 	const struct emb_ops_t *emb_ops;
-    struct aml_slice aslice[3];
+	struct aml_slice aslice[3];
 	struct aml_video video[AML_ISP_STREAM_MAX];
+	struct timer_list isp_check_timer;
 };
 
 struct isp_dev_ops {
