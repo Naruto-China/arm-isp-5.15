@@ -18,7 +18,7 @@ TARGET := media2videoService
 CFLAGS := -Wall -Wno-int-to-pointer-cast -Wno-pointer-to-int-cast
 CFLAGS += $(LOCAL_INCLUDES)
 CFLAGS += -I./external -pthread -fPIE
-CFLAGS += -L$(ISP_ROOT_DIR)/firmware -lispaml -ldl -L$(ISP_ROOT_OUT_DIR)/media-v4l2 -lmediaAPI -L$(ISP_ROOT_OUT_DIR)/sensor_calibration -ltuning -lm -L$(ISP_ROOT_OUT_DIR)/lens -llens
+CFLAGS += -L$(ISP_ROOT_DIR)/firmware/${ARM_TARGET}/ -lispaml -ldl -L$(ISP_ROOT_OUT_DIR)/media-v4l2 -lmediaAPI -L$(ISP_ROOT_OUT_DIR)/sensor_calibration -ltuning -lm -L$(ISP_ROOT_OUT_DIR)/lens -llens
 CFLAGS += -fPIC -D_FORTIFY_SOURCE=2 -O3
 
 #CFLAGS += -L./external -lH264VideoStreamer -lx264 -lcrypto -lssl

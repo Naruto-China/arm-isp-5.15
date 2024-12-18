@@ -25,6 +25,7 @@ LIBTUNING = libtuning.so
 
 # rules
 all: $(LIBTUNING)
+	@echo "CXX is: $(CXX)"
 
 %.o: %.cpp
 #%.o: $(TUNING_SUBDIR) %.cpp
