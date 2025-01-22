@@ -1556,6 +1556,13 @@ static void adap_hw_irq_enable(void *a_dev)
 	//module_update_bits(a_dev, ISP_TOP_OFFSET, MIPI_TOP_ISP_PENDING_MASK0, 1, ALIGN_FRAME_END, 1); //align done
 }
 
+static void adap_hw_clear_irq(void *a_dev)
+{
+	struct adapter_dev_t *adap_dev = a_dev;
+	module_update_bits(a_dev, adap_dev->index, CSI2_INTERRUPT_CTRL_STAT, 0, 0, 6);
+	module_update_bits(a_dev, adap_dev->index, CSI2_INTERRUPT_CTRL_STAT, 0, 16, 6);
+}
+
 static void adap_hw_reset(void *a_dev)
 {
 	struct adapter_dev_t *adap_dev = a_dev;
@@ -1657,6 +1664,7 @@ const struct adapter_dev_ops adap_dev_hw_ops = {
 	.hw_wdr_cfg_buf = adap_wdr_cfg_buf,
 	.hw_irq_en = adap_hw_irq_enable,
 	.hw_irq_dis = adap_hw_irq_disable,
+	.hw_clear_irq = adap_hw_clear_irq,
 	.hw_offline_mode = adap_hw_offline,
 	.hw_fe_status = adap_fe_status,
 	.hw_fe_set_byte_order = adap_fe_set_byte_order,

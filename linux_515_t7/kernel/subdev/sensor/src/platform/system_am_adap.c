@@ -546,6 +546,12 @@ int am_adap_get_depth(uint8_t channel)
     return depth;
 }
 
+void am_clear_mask(void)
+{
+    adap_write(MIPI_TOP_ISP_PENDING_MASK0, CMPR_CNTL_IO, 0);
+    adap_write(MIPI_TOP_ISP_PENDING_MASK1, CMPR_CNTL_IO, 0);
+}
+
 int am_disable_irq(uint8_t channel)
 {
     //disable irq mask
@@ -1790,11 +1796,13 @@ int am_adap_init(uint8_t channel)
     }
 
     if (adap_fsm[channel].para.mode == DDR_MODE && g_adap->f_end_irq == 0) {
+        am_clear_mask();
         ret = request_irq(g_adap->rd_irq, &adpapter_isr, IRQF_SHARED | IRQF_TRIGGER_HIGH,
         "adapter-irq", (void *)g_adap);
         g_adap->f_end_irq = 1;
         pr_info("adapter irq = %d, ret = %d\n", g_adap->rd_irq, ret);
     } else if ((adap_fsm[channel].para.mode == DCAM_MODE || adap_fsm[channel].para.mode == DCAM_DOL_MODE) && g_adap->f_end_irq == 0) {
+        am_clear_mask();
         ret = request_irq(g_adap->rd_irq, &adpapter_isr, IRQF_SHARED | IRQF_TRIGGER_HIGH,
         "adapter-irq", (void *)g_adap);
         g_adap->f_end_irq = 1;

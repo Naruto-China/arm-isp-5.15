@@ -222,6 +222,7 @@ struct adapter_dev_ops {
 	int (*hw_wdr_cfg_buf)(void *a_dev);
 	void (*hw_irq_en)(void *a_dev);
 	void (*hw_irq_dis)(void *a_dev);
+	void (*hw_clear_irq)(void *a_dev);
 	void (*hw_offline_mode)(void *a_dev);
 	u32 *(*hw_fe_status)(void *a_dev);
 	void (*hw_fe_set_byte_order)(void *a_dev, u32 byte_order);

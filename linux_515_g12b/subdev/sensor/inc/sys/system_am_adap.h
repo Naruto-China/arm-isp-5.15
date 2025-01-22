@@ -146,6 +146,7 @@
 #define MIPI_OTHER_CNTL0           0x100
 #define MIPI_ADAPT_IRQ_MASK0       0x180
 #define MIPI_ADAPT_IRQ_PENDING0    0x184
+#define MIPI_ADAPT_IRQ_MASK1       0x188
 #define MIPI_ADAPT_AXI_CTRL0 (0x18 + 0x800)
 #define DDR_RD0_LBUF_STATUS        0x140
 #define DDR_RD1_LBUF_STATUS        0x144
@@ -279,10 +280,7 @@ int am_adap_start(uint8_t channel, uint8_t dcam);
 int am_adap_reset(uint8_t channel);
 int am_adap_deinit(uint8_t channel);
 void am_adap_set_info(struct am_adap_info *info);
-//int get_fte1_flag(void);
 int am_adap_get_depth(uint8_t channel);
-//void mipi_adap_reg_rd_ext(int addr, adap_io_type_t io_type, uint32_t *val);
-//void adapt_set_virtcam(void);
 extern int32_t system_timer_usleep( uint32_t usec );
 extern int camera_notify( uint notification, void *arg);
 
