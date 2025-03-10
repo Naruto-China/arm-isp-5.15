@@ -25,6 +25,10 @@
 #define V4L2_META_AML_ISP_CONFIG     v4l2_fourcc('A', 'C', 'F', 'G') /* Aml isp config */
 #define V4L2_META_AML_ISP_STATS	     v4l2_fourcc('A', 'S', 'T', 'S') /* Aml isp statistics */
 
+static int drop_frame_count = 0;
+module_param(drop_frame_count, int, 0644);
+MODULE_PARM_DESC(drop_frame_count, "Set video drop frame number");
+
 static char *stream_name[] = {
 	"isp-ddr-input",
 	"isp-param",
@@ -150,7 +154,7 @@ static int isp_cap_irq_handler(void *video, int status)
 {
 	unsigned long flags;
 	struct aml_video *vd = video;
-	const int video_drop_frame_cnt = 3;
+	int video_drop_frame_cnt = drop_frame_count;
 	struct cam_device * cam_dev;
 	cam_dev = aml_video_to_cam_device(vd);
 
@@ -174,12 +178,17 @@ static int isp_cap_irq_handler(void *video, int status)
 	// drop frame; multiple videos dq & q; open another video while one video is streaming
 	// the second opened video must drop some frames after streaming on,
 	// otherwise empty frame will be dequeued.
-	if (vd->frm_cnt < video_drop_frame_cnt) {
-		vd->frm_cnt++;
-		//pr_info("drop frame, vid %d, frm cnt %d", vd->id, vd->frm_cnt);
-		ops->hw_stream_cfg_buf(vd, b_current);
-		spin_unlock_irqrestore(&vd->buff_list_lock, flags);
-		return 0;
+	if (!(vd->id == AML_ISP_STREAM_PARAM ||
+		vd->id == AML_ISP_STREAM_STATS ||
+		vd->id == AML_ISP_STREAM_DDR ||
+		vd->id == AML_ISP_STREAM_RAW)) {
+		if (vd->frm_cnt < video_drop_frame_cnt) {
+			vd->frm_cnt++;
+			//pr_info("drop frame, vid %d, frm cnt %d", vd->id, vd->frm_cnt);
+			ops->hw_stream_cfg_buf(vd, b_current);
+			spin_unlock_irqrestore(&vd->buff_list_lock, flags);
+			return 0;
+		}
 	}
 
 	if (b_current) {
