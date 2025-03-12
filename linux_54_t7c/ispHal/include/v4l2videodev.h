@@ -21,6 +21,10 @@ int v4l2_video_get_format(struct media_entity *entity,
 int v4l2_video_set_format(struct media_entity *entity,
               struct v4l2_format * v4l2_fmt);
 
+int v4l2_video_set_ctrls(struct media_entity *entity, struct v4l2_ext_control *ctrls, int count);
+
+int v4l2_video_set_fps(struct media_entity * entity, uint32_t fps);
+
 int v4l2_video_get_capability(struct media_entity *entity,
                         struct v4l2_capability * v4l2_cap);
 

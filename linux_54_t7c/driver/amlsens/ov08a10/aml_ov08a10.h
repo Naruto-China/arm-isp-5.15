@@ -70,6 +70,7 @@ struct ov08a10 {
 
 	int status;
 	struct mutex lock;
+	int fps;
 };
 
 struct ov08a10_pixfmt {
@@ -92,7 +93,6 @@ static const struct regmap_config ov08a10_regmap_config = {
 	.cache_type = REGCACHE_RBTREE,
 };
 
-#ifdef OV08A10_SDR_60FPS_1440M
 static const struct ov08a10_regval setting_3840_2160_4lane_1440m_60fps[] = {
 	{0x0103, 0x01 },
 	{0x0303, 0x01 },
@@ -193,7 +193,7 @@ static const struct ov08a10_regval setting_3840_2160_4lane_1440m_60fps[] = {
 	{0x3817, 0x01 },
 	{0x381c, 0x00 },
 	{0x3820, 0x00 },
-	{0x3821, 0x04 },
+	{0x3821, 0x00 }, //0x00
 	{0x3823, 0x08 },
 	{0x3826, 0x00 },
 	{0x3827, 0x08 },
@@ -265,7 +265,6 @@ static const struct ov08a10_regval setting_3840_2160_4lane_1440m_60fps[] = {
 
 };
 
-#else
 static const struct ov08a10_regval setting_3840_2160_4lane_800m_30fps[] = {
 	{0x0103, 0x01},
 	{0x0303, 0x01},
@@ -435,9 +434,7 @@ static const struct ov08a10_regval setting_3840_2160_4lane_800m_30fps[] = {
 	{0x4700, 0x2b},
 	{0x4e00, 0x2b},
 };
-#endif
 
-#ifdef OV08A10_HDR_30FPS_1440M
 static const struct ov08a10_regval setting_hdr_3840_2160_4lane_1440m_30fps[] = {
 	{ 0x0100, 0x00},
 	{ 0x0103, 0x01},
@@ -623,7 +620,7 @@ static const struct ov08a10_regval setting_hdr_3840_2160_4lane_1440m_30fps[] = {
 	{ 0x3512, 0x20},
 	{ 0x3833, 0x01},
 };
-#else
+
 static const struct ov08a10_regval setting_hdr_3840_2160_4lane_848m_15fps[] = {
 	{0x0100, 0x00},
 	{0x0103, 0x01},
@@ -818,7 +815,6 @@ static const struct ov08a10_regval setting_hdr_3840_2160_4lane_848m_15fps[] = {
 	{0x3812, 0x00},
 	{0x3813, 0x10},
 };
-#endif
 
 static const struct ov08a10_regval ov08a10_1080p_settings[] = {
 

@@ -64,15 +64,15 @@ int cmos_get_ae_default_imx415(int ViPipe, ALG_SENSOR_DEFAULT_S *pstAeSnsDft)
 {
     INFO("cmos_get_ae_default\n");
 
-    sensor.snsAlgInfo.active.width = 1920;
-    sensor.snsAlgInfo.active.height = 1080;
+    sensor.snsAlgInfo.active.width = 3840;
+    sensor.snsAlgInfo.active.height = 2160;
     sensor.snsAlgInfo.fps = 30*256;
     sensor.snsAlgInfo.sensor_exp_number = 1;
     sensor.snsAlgInfo.bits = 12;
 
     sensor.snsAlgInfo.sensor_gain_number = 1;
-    sensor.snsAlgInfo.total.width = 545;
-    sensor.snsAlgInfo.total.height = 4503;
+    sensor.snsAlgInfo.total.width = 0x0215;
+    sensor.snsAlgInfo.total.height = 0x08CB;
 
     sensor.snsAlgInfo.lines_per_second = (sensor.snsAlgInfo.total.height-8) * sensor.snsAlgInfo.fps / 256;
     sensor.snsAlgInfo.pixels_per_line = sensor.snsAlgInfo.total.width;
@@ -86,10 +86,10 @@ int cmos_get_ae_default_imx415(int ViPipe, ALG_SENSOR_DEFAULT_S *pstAeSnsDft)
         sensor.snsAlgInfo.integration_time_long_max = (sensor.snsAlgInfo.total.height*2 - (225+3)) <<SHUTTER_TIME_SHIFT;
         sensor.snsAlgInfo.integration_time_limit = (225-3)<<SHUTTER_TIME_SHIFT;
     } else {
-        sensor.snsAlgInfo.integration_time_min = 4<<SHUTTER_TIME_SHIFT;
-        sensor.snsAlgInfo.integration_time_max = (sensor.snsAlgInfo.total.height - 8)<<SHUTTER_TIME_SHIFT;
-        sensor.snsAlgInfo.integration_time_long_max = (sensor.snsAlgInfo.total.height - 8)<<SHUTTER_TIME_SHIFT;
-        sensor.snsAlgInfo.integration_time_limit = (sensor.snsAlgInfo.total.height - 8)<<SHUTTER_TIME_SHIFT;
+        sensor.snsAlgInfo.integration_time_min = 1<<SHUTTER_TIME_SHIFT;
+        sensor.snsAlgInfo.integration_time_max = (sensor.snsAlgInfo.total.height - 4)<<SHUTTER_TIME_SHIFT;
+        sensor.snsAlgInfo.integration_time_long_max = (sensor.snsAlgInfo.total.height - 4)<<SHUTTER_TIME_SHIFT;
+        sensor.snsAlgInfo.integration_time_limit = (sensor.snsAlgInfo.total.height - 4)<<SHUTTER_TIME_SHIFT;
     }
 
     sensor.snsAlgInfo.dgain_log2_max = 0;
@@ -155,12 +155,15 @@ void cmos_inttime_calc_table_imx415(int ViPipe, uint32_t pu32ExpL, uint32_t pu32
 
     //CAMHAL_LOGD("expo: %d, %d\n", shutter_time_lines, shutter_time_lines_short);
     if (sensor.enWDRMode == 0) {
-        if (shutter_time_lines < 8)
-            shutter_time_lines = 8;
         if (shutter_time_lines > shutter_time_line_each_frame)
             shutter_time_lines = shutter_time_line_each_frame;
         shutter_time_lines = shutter_time_line_each_frame - shutter_time_lines;
+        // now  shutter_time_lines is SHR0 reg value; SHR0 max value is VMAX-4
+        if (shutter_time_lines > (shutter_time_line_each_frame - 4))
+            shutter_time_lines = (shutter_time_line_each_frame - 4);
 
+    if (shutter_time_lines < 8)
+        shutter_time_lines = 8;
     } else {
         if (shutter_time_lines_short < 1)
             shutter_time_lines_short = 1;

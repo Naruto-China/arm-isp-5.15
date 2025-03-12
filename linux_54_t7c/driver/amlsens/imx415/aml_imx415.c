@@ -52,6 +52,14 @@ static const struct imx415_mode imx415_modes_4lanes[] = {
 		.data = linear_4k_30fps_1440Mbps_4lane_10bits,
 		.data_size = ARRAY_SIZE(linear_4k_30fps_1440Mbps_4lane_10bits),
 	},
+	{
+		.width = 3840,
+		.height = 2160,
+		.hmax = 0x0898,
+		.link_freq_index = FREQ_INDEX_1080P,
+		.data = linear_4k_60fps_1440Mbps_4lane_10bits,
+		.data_size = ARRAY_SIZE(linear_4k_60fps_1440Mbps_4lane_10bits),
+	},
 };
 
 static inline const struct imx415_mode *imx415_modes_ptr(const struct imx415 *imx415)
@@ -213,7 +221,10 @@ static int imx415_set_ctrl(struct v4l2_ctrl *ctrl)
 		imx415->enWDRMode = ctrl->val;
 		break;
 	case V4L2_CID_AML_ORIG_FPS:
-		ret = imx415_set_fps(imx415, ctrl->val);
+		imx415->fps = ctrl->val;
+		if (imx415->fps != 60) {
+			ret = imx415_set_fps(imx415, imx415->fps);
+		}
 		break;
 	default:
 		dev_err(imx415->dev, "Error ctrl->id %u, flag 0x%lx\n",
@@ -336,12 +347,14 @@ static int imx415_set_fmt(struct v4l2_subdev *sd,
 	unsigned int i,ret;
 
 	mutex_lock(&imx415->lock);
-
-	mode = v4l2_find_nearest_size(imx415_modes_ptr(imx415),
-				 imx415_modes_num(imx415),
-				width, height,
-				fmt->format.width, fmt->format.height);
-
+	if (imx415->fps == 60) {
+		mode = &imx415_modes_4lanes[1];
+	} else {
+		mode = v4l2_find_nearest_size(imx415_modes_ptr(imx415),
+					 imx415_modes_num(imx415),
+					width, height,
+					fmt->format.width, fmt->format.height);
+	}
 	fmt->format.width = mode->width;
 	fmt->format.height = mode->height;
 
@@ -398,8 +411,13 @@ static int imx415_set_fmt(struct v4l2_subdev *sd,
 			dev_err(imx415->dev, "imx415 wdr mode init...\n");
 	} else {
 		/* Set init register settings */
-		ret = imx415_set_register_array(imx415, linear_4k_30fps_1440Mbps_4lane_10bits,
-			ARRAY_SIZE(linear_4k_30fps_1440Mbps_4lane_10bits));
+		if (imx415->fps == 60) {
+			ret = imx415_set_register_array(imx415, linear_4k_60fps_1440Mbps_4lane_10bits,
+				ARRAY_SIZE(linear_4k_60fps_1440Mbps_4lane_10bits));
+		} else {
+			ret = imx415_set_register_array(imx415, linear_4k_30fps_1440Mbps_4lane_10bits,
+				ARRAY_SIZE(linear_4k_30fps_1440Mbps_4lane_10bits));
+		}
 		if (ret < 0) {
 			dev_err(imx415->dev, "Could not set init registers\n");
 			return ret;
@@ -637,7 +655,7 @@ static struct v4l2_ctrl_config fps_cfg = {
 	.type = V4L2_CTRL_TYPE_INTEGER,
 	.flags = V4L2_CTRL_FLAG_VOLATILE | V4L2_CTRL_FLAG_EXECUTE_ON_WRITE,
 	.min = 1,
-	.max = 30,
+	.max = 60,
 	.step = 1,
 	.def = 30,
 };
@@ -745,6 +763,7 @@ int imx415_init(struct i2c_client *client, void *sdrv)
 	imx415->client = client;
 	imx415->client->addr = IMX415_SLAVE_ID;
 	imx415->gpio = &sensor->gpio;
+	imx415->fps = 30;
 
 	imx415->regmap = devm_regmap_init_i2c(client, &imx415_regmap_config);
 	if (IS_ERR(imx415->regmap)) {

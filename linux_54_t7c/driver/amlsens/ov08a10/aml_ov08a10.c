@@ -92,8 +92,8 @@ static const struct ov08a10_mode ov08a10_modes_4lanes[] = {
 		.height = 2160,
 		.hmax = 0x0ce4,
 		.link_freq_index = FREQ_INDEX_720P,
-		.data = ov08a10_720p_settings,
-		.data_size = ARRAY_SIZE(ov08a10_720p_settings),
+		.data = setting_3840_2160_4lane_1440m_60fps,
+		.data_size = ARRAY_SIZE(setting_3840_2160_4lane_1440m_60fps),
 	},
 };
 
@@ -245,7 +245,10 @@ static int ov08a10_set_ctrl(struct v4l2_ctrl *ctrl)
 		ov08a10->enWDRMode = ctrl->val;
 		break;
 	case V4L2_CID_AML_ORIG_FPS:
-		ret = ov08a10_set_fps(ov08a10, ctrl->val);
+		ov08a10->fps = ctrl->val;
+		if (ov08a10->fps != 60) {
+			ret = ov08a10_set_fps(ov08a10, ov08a10->fps);
+		}
 		break;
 	default:
 		dev_err(ov08a10->dev, "Error ctrl->id %u, flag 0x%lx\n",
@@ -368,11 +371,14 @@ static int ov08a10_set_fmt(struct v4l2_subdev *sd,
 	unsigned int i,ret;
 
 	mutex_lock(&ov08a10->lock);
-
-	mode = v4l2_find_nearest_size(ov08a10_modes_ptr(ov08a10),
-				 ov08a10_modes_num(ov08a10),
-				width, height,
-				fmt->format.width, fmt->format.height);
+	if (ov08a10->fps == 60) {
+		mode = &ov08a10_modes_4lanes[1];
+	} else {
+		mode = v4l2_find_nearest_size(ov08a10_modes_ptr(ov08a10),
+					 ov08a10_modes_num(ov08a10),
+					width, height,
+					fmt->format.width, fmt->format.height);
+	}
 
 	fmt->format.width = mode->width;
 	fmt->format.height = mode->height;
@@ -436,14 +442,13 @@ static int ov08a10_set_fmt(struct v4l2_subdev *sd,
 	} else {
 		/* Set init register settings */
 
-		#ifdef OV08A10_SDR_60FPS_1440M
-		ret = ov08a10_set_register_array(ov08a10, setting_3840_2160_4lane_1440m_60fps,
-			ARRAY_SIZE(setting_3840_2160_4lane_1440m_60fps));
-		#else
-		ret = ov08a10_set_register_array(ov08a10, setting_3840_2160_4lane_800m_30fps,
-			ARRAY_SIZE(setting_3840_2160_4lane_800m_30fps));
-		#endif
-
+		if (ov08a10->fps == 60) {
+			ret = ov08a10_set_register_array(ov08a10, setting_3840_2160_4lane_1440m_60fps,
+				ARRAY_SIZE(setting_3840_2160_4lane_1440m_60fps));
+		} else {
+			ret = ov08a10_set_register_array(ov08a10, setting_3840_2160_4lane_800m_30fps,
+				ARRAY_SIZE(setting_3840_2160_4lane_800m_30fps));
+		}
 		if (ret < 0) {
 			dev_err(ov08a10->dev, "Could not set init registers\n");
 			return ret;
@@ -675,7 +680,7 @@ static struct v4l2_ctrl_config fps_cfg = {
 	.type = V4L2_CTRL_TYPE_INTEGER,
 	.flags = V4L2_CTRL_FLAG_VOLATILE | V4L2_CTRL_FLAG_EXECUTE_ON_WRITE,
 	.min = 1,
-	.max = 30,
+	.max = 60,
 	.step = 1,
 	.def = 30,
 };
@@ -783,6 +788,8 @@ int ov08a10_init(struct i2c_client *client, void *sdrv)
 	ov08a10->client = client;
 	ov08a10->client->addr = OV08A10_SLAVE_ID;
 	ov08a10->gpio = &sensor->gpio;
+	ov08a10->fps = 30;
+	ov08a10->nlanes = 4;
 
 	ov08a10->regmap = devm_regmap_init_i2c(client, &ov08a10_regmap_config);
 	if (IS_ERR(ov08a10->regmap)) {

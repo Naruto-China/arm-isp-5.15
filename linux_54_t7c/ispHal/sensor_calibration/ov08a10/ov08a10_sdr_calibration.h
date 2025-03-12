@@ -146,7 +146,7 @@ static int32_t _CALIBRATION_AE_CTL[32] = {
     (2<<12), //WDR mode only: ae WDR mode low light threshold by log2 value of gain
     77,   //WDR mode only: Max percentage of clipped pixels for long exposure: WDR mode only: 256 = 100% clipped pixels
     15,   //WDR mode only: Time filter for exposure ratio
-    1,   //reduce fps feature enable.
+    0,   //reduce fps feature enable.
     15*256,        //target fps of reduce frame rates.
     15238,   //trigger threshold of the reduce fps, write gain log2 value.
     (1<<10),   //lag threshold of the reduce fps, write gain log2 value.

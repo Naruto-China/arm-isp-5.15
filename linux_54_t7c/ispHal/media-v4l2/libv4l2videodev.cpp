@@ -26,7 +26,7 @@
 #include "mediactl.h"
 #include "tools.h"
 #include "v4l2videodev.h"
-
+#include "v4l2subdev.h"
 
 int v4l2_video_open(struct media_entity *entity)
 {
@@ -76,6 +76,39 @@ int v4l2_video_get_format(struct media_entity *entity,
         return ret;
     }
 
+    return 0;
+}
+
+int v4l2_video_set_ctrls(struct media_entity *entity, struct v4l2_ext_control *ctrls, int count)
+{
+    int ret = 0;
+    struct v4l2_ext_controls ext_ctrls;
+
+    ret = v4l2_video_open(entity);
+    if (ret < 0) {
+        return ret;
+    }
+
+    memset(&ext_ctrls, 0, sizeof(ext_ctrls));
+
+    ext_ctrls.which = V4L2_CTRL_WHICH_CUR_VAL;
+    ext_ctrls.controls = ctrls;
+    ext_ctrls.count = count;
+
+    ret = ioctl(entity->fd, VIDIOC_S_EXT_CTRLS, &ext_ctrls);
+
+    return ret;
+}
+
+int v4l2_video_set_fps(struct media_entity * entity, uint32_t fps){
+    int ret;
+    struct v4l2_ext_control ext_control;
+    ext_control.id = V4L2_CID_AML_USER_FPS;
+    ext_control.value = fps;
+    ret = v4l2_video_set_ctrls(entity, &ext_control, 1);
+    if (ret < 0) {
+        return -errno;
+    }
     return 0;
 }
 
