@@ -39,6 +39,7 @@ struct ov08a10_mode {
 	u32 height;
 	u32 hmax;
 	u32 link_freq_index;
+	struct v4l2_fract max_fps;
 
 	const struct ov08a10_regval *data;
 	u32 data_size;

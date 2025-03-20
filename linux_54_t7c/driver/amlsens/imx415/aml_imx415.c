@@ -49,6 +49,10 @@ static const struct imx415_mode imx415_modes_4lanes[] = {
 		.height = 2160,
 		.hmax = 0x0898,
 		.link_freq_index = FREQ_INDEX_1080P,
+		.max_fps = {
+			.numerator = 10000,
+			.denominator = 300000,
+		},
 		.data = linear_4k_30fps_1440Mbps_4lane_10bits,
 		.data_size = ARRAY_SIZE(linear_4k_30fps_1440Mbps_4lane_10bits),
 	},
@@ -57,6 +61,10 @@ static const struct imx415_mode imx415_modes_4lanes[] = {
 		.height = 2160,
 		.hmax = 0x0898,
 		.link_freq_index = FREQ_INDEX_1080P,
+		.max_fps = {
+			.numerator = 10000,
+			.denominator = 600000,
+		},
 		.data = linear_4k_60fps_1440Mbps_4lane_10bits,
 		.data_size = ARRAY_SIZE(linear_4k_60fps_1440Mbps_4lane_10bits),
 	},
@@ -268,16 +276,41 @@ static int imx415_enum_frame_size(struct v4l2_subdev *sd,
 			       struct v4l2_subdev_frame_size_enum *fse)
 #endif
 {
-	if (fse->index >= ARRAY_SIZE(imx415_formats))
+	int cfg_num = 1; //report one max size
+	if (fse->index >= cfg_num)
 		return -EINVAL;
 
-	fse->min_width = imx415_formats[fse->index].min_width;
-	fse->min_height = imx415_formats[fse->index].min_height;;
-	fse->max_width = imx415_formats[fse->index].max_width;
-	fse->max_height = imx415_formats[fse->index].max_height;
+	fse->min_width = imx415_formats[0].max_width;
+	fse->min_height = imx415_formats[0].max_height;;
+	fse->max_width = imx415_formats[0].max_width;
+	fse->max_height = imx415_formats[0].max_height;
 
 	return 0;
 }
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
+static int imx415_enum_frame_interval(struct v4l2_subdev *sd,
+				struct v4l2_subdev_state *sd_state,
+				struct v4l2_subdev_frame_interval_enum *fie)
+#else
+static int imx415_enum_frame_interval(struct v4l2_subdev *sd,
+				struct v4l2_subdev_pad_config *cfg,
+				struct v4l2_subdev_frame_interval_enum *fie)
+#endif
+{
+	struct imx415 *imx415 = to_imx415(sd);
+	int cfg_num = imx415_modes_num(imx415);
+	const struct imx415_mode* supported_modes = imx415_modes_ptr(imx415);
+	if (fie->index >= cfg_num)
+		return -EINVAL;
+
+	fie->code = imx415_formats[0].code;
+	fie->width = imx415_formats[0].max_width;
+	fie->height = imx415_formats[0].max_height;
+	fie->interval = supported_modes[fie->index].max_fps;
+	return 0;
+}
+
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
 static int imx415_get_fmt(struct v4l2_subdev *sd,
 			  struct v4l2_subdev_state *cfg,
@@ -616,6 +649,7 @@ static const struct v4l2_subdev_pad_ops imx415_pad_ops = {
 	.init_cfg = imx415_entity_init_cfg,
 	.enum_mbus_code = imx415_enum_mbus_code,
 	.enum_frame_size = imx415_enum_frame_size,
+	.enum_frame_interval = imx415_enum_frame_interval,
 	.get_selection = imx415_get_selection,
 	.get_fmt = imx415_get_fmt,
 	.set_fmt = imx415_set_fmt,

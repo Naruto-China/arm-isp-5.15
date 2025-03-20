@@ -62,19 +62,25 @@ static const struct ov08a10_mode ov08a10_modes_2lanes[] = {
 		.width = 1920,
 		.height = 1080,
 		.hmax  = 0x1130,
+		.link_freq_index = FREQ_INDEX_1080P,
+		.max_fps = {
+			.numerator = 10000,
+			.denominator = 300000,
+		},
 		.data = ov08a10_1080p_settings,
 		.data_size = ARRAY_SIZE(ov08a10_1080p_settings),
-
-		.link_freq_index = FREQ_INDEX_1080P,
 	},
 	{
 		.width = 1280,
 		.height = 720,
 		.hmax = 0x19c8,
+		.link_freq_index = FREQ_INDEX_720P,
+		.max_fps = {
+			.numerator = 10000,
+			.denominator = 300000,
+		},
 		.data = ov08a10_720p_settings,
 		.data_size = ARRAY_SIZE(ov08a10_720p_settings),
-
-		.link_freq_index = FREQ_INDEX_720P,
 	},
 };
 
@@ -84,6 +90,10 @@ static const struct ov08a10_mode ov08a10_modes_4lanes[] = {
 		.height = 2160,
 		.hmax = 0x0898,
 		.link_freq_index = FREQ_INDEX_1080P,
+		.max_fps = {
+			.numerator = 10000,
+			.denominator = 300000,
+		},
 		.data = ov08a10_1080p_settings,
 		.data_size = ARRAY_SIZE(ov08a10_1080p_settings),
 	},
@@ -92,6 +102,10 @@ static const struct ov08a10_mode ov08a10_modes_4lanes[] = {
 		.height = 2160,
 		.hmax = 0x0ce4,
 		.link_freq_index = FREQ_INDEX_720P,
+		.max_fps = {
+			.numerator = 10000,
+			.denominator = 600000,
+		},
 		.data = setting_3840_2160_4lane_1440m_60fps,
 		.data_size = ARRAY_SIZE(setting_3840_2160_4lane_1440m_60fps),
 	},
@@ -292,16 +306,41 @@ static int ov08a10_enum_frame_size(struct v4l2_subdev *sd,
 			       struct v4l2_subdev_frame_size_enum *fse)
 #endif
 {
-	if (fse->index >= ARRAY_SIZE(ov08a10_formats))
+	int cfg_num = 1; //report one max size
+	if (fse->index >= cfg_num)
 		return -EINVAL;
 
-	fse->min_width = ov08a10_formats[fse->index].min_width;
-	fse->min_height = ov08a10_formats[fse->index].min_height;;
-	fse->max_width = ov08a10_formats[fse->index].max_width;
-	fse->max_height = ov08a10_formats[fse->index].max_height;
+	fse->min_width = ov08a10_formats[0].max_width;
+	fse->min_height = ov08a10_formats[0].max_height;;
+	fse->max_width = ov08a10_formats[0].max_width;
+	fse->max_height = ov08a10_formats[0].max_height;
 
 	return 0;
 }
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
+static int ov08a10_enum_frame_interval(struct v4l2_subdev *sd,
+				struct v4l2_subdev_state *sd_state,
+				struct v4l2_subdev_frame_interval_enum *fie)
+#else
+static int ov08a10_enum_frame_interval(struct v4l2_subdev *sd,
+				struct v4l2_subdev_pad_config *cfg,
+				struct v4l2_subdev_frame_interval_enum *fie)
+#endif
+{
+	struct ov08a10 *ov08a10 = to_ov08a10(sd);
+	int cfg_num = ov08a10_modes_num(ov08a10);
+	const struct ov08a10_mode* supported_modes = ov08a10_modes_ptr(ov08a10);
+	if (fie->index >= cfg_num)
+		return -EINVAL;
+
+	fie->code = ov08a10_formats[0].code;
+	fie->width = ov08a10_formats[0].max_width;
+	fie->height = ov08a10_formats[0].max_height;
+	fie->interval = supported_modes[fie->index].max_fps;
+	return 0;
+}
+
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
 static int ov08a10_get_fmt(struct v4l2_subdev *sd,
 			  struct v4l2_subdev_state *cfg,
@@ -643,6 +682,7 @@ static const struct v4l2_subdev_pad_ops ov08a10_pad_ops = {
 	.init_cfg = ov08a10_entity_init_cfg,
 	.enum_mbus_code = ov08a10_enum_mbus_code,
 	.enum_frame_size = ov08a10_enum_frame_size,
+	.enum_frame_interval = ov08a10_enum_frame_interval,
 	.get_selection = ov08a10_get_selection,
 	.get_fmt = ov08a10_get_fmt,
 	.set_fmt = ov08a10_set_fmt,
