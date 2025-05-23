@@ -136,7 +136,6 @@ static int cam_create_csiphy_adap_links(struct cam_device *cam_dev)
 	struct media_entity *csiphy = &cam_dev->csiphy_dev.sd.entity;
 	struct media_entity *adap = &cam_dev->adap_dev.sd.entity;
 
-	flags = MEDIA_LNK_FL_ENABLED;
 	rtn = media_create_pad_link(csiphy, AML_CSIPHY_PAD_SRC,
 				adap, AML_ADAP_PAD_SINK, flags);
 	if (rtn) {
