@@ -371,13 +371,13 @@ void isp_param_init(struct media_stream v4l2_media_stream, struct thread_param *
         return ;
     }
 
-    tparm->sensorCfg = matchSensorConfig(&v4l2_media_stream);
+    tparm->sensorCfg = matchSensorConfigByStream(&v4l2_media_stream);
     if (tparm->sensorCfg == nullptr) {
         ERR("Failed to matchSensorConfig");
         return ;
     }
 
-    tparm->lensCfg = matchLensConfig(&v4l2_media_stream);
+    tparm->lensCfg = matchLensConfigByStream(&v4l2_media_stream);
     if (tparm->lensCfg != nullptr) {
         lens_set_entity(tparm->lensCfg, v4l2_media_stream.lens_ent);
         lens_control_cb(tparm->lensCfg, &tparm->info.pstAlgCtx.stLensFunc);
@@ -486,7 +486,7 @@ void * video_thread(void *arg)
         return NULL;
     }
     INFO("[T#%d] The %s device was opened successfully. stream init ok\n", stream_type, tparm->mediadevname);
-    android::staticPipe::fetchPipeMaxResolution(&tparm->v4l2_media_stream, tparm->width, tparm->height);
+    fetchPipeMaxResolution(&tparm->v4l2_media_stream, &tparm->width, &tparm->height);
     /* check capability */
     memset (&v4l2_cap, 0, sizeof (struct v4l2_capability));
     rc = v4l2_video_get_capability(tparm->v4l2_media_stream.video_ent0, &v4l2_cap);

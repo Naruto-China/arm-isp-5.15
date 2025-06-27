@@ -33,6 +33,10 @@
 
 #include "mediaApi.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 enum sensorType
 {
     sensor_raw,
@@ -51,10 +55,14 @@ struct sensorConfig {
     uint32_t sdrFormat;
     enum sensorType type;
 };
-struct sensorConfig *matchSensorConfig(media_stream_t *stream);
-struct sensorConfig *matchSensorConfig(const char* sensorEntityName);
+struct sensorConfig *matchSensorConfigByStream(media_stream_t *stream);
+struct sensorConfig *matchSensorConfigByName(const char* sensorEntityName);
 void cmos_sensor_control_cb(struct sensorConfig *cfg, ALG_SENSOR_EXP_FUNC_S *stSnsExp);
 void cmos_set_sensor_entity(struct sensorConfig *cfg, struct media_entity * sensor_ent, int wdr);
 void cmos_get_sensor_calibration(struct sensorConfig *cfg, struct media_entity *sensor_ent, aisp_calib_info_t *calib);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

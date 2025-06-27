@@ -10,7 +10,7 @@
 #ifndef __STATIC_PIPE_H__
 #define __STATIC_PIPE_H__
 
-#include <cstdlib>
+#include <stdlib.h>
 
 
 #include "mediactl.h"
@@ -19,14 +19,16 @@
 #include "mediaApi.h"
 #include "sensor_config.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-namespace android {
+int fetchPipeMaxResolution(media_stream_t *stream, uint32_t *width, uint32_t *height);
+int fetchSensorFormat(media_stream_t *stream, int hdrEnable);
+enum sensorType fetchSensorType(media_stream_t *stream);
 
-class staticPipe {
-  public:
-    static int fetchPipeMaxResolution(media_stream_t *stream, uint32_t& width, uint32_t &height);
-    static int fetchSensorFormat(media_stream_t *stream, int hdrEnable);
-    static sensorType fetchSensorType(media_stream_t *stream);
-};
+#ifdef __cplusplus
 }
+#endif
+
 #endif

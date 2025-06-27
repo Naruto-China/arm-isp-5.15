@@ -31,6 +31,10 @@ enum {
 #define V4L2_CID_AML_MODE            (V4L2_CID_AML_BASE + 0x004)
 #define V4L2_CID_AML_LENS_MOVING     (V4L2_CID_AML_BASE + 0x006)
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /**
  * @brief Open a sub-device.
  * @param entity - sub-device media entity.
@@ -265,5 +269,8 @@ int v4l2_subdev_set_ctrls(struct media_entity *entity, struct v4l2_ext_control *
 
 int v4l2_subdev_set_wdr(struct media_entity *entity, uint32_t wdr_mode);
 
+#ifdef __cplusplus
+}
+#endif
 
 #endif

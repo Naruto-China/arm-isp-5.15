@@ -23,6 +23,10 @@
 #define V4L2_META_AML_ISP_CONFIG    v4l2_fourcc('A', 'C', 'F', 'G') /* Aml isp config */
 #define V4L2_META_AML_ISP_STATS     v4l2_fourcc('A', 'S', 'T', 'S') /* Aml isp statistics */
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef struct stream_configuration{
     struct aml_format format;
     struct aml_format vformat[4];
@@ -74,6 +78,10 @@ int setConfigFormat(media_stream_t *camera, stream_configuration_t *cfg);
 int media_set_wdrMode(media_stream_t *camera, uint32_t wdr_mode);
 
 int mediaStreamConfig(media_stream_t * stream, stream_configuration_t *cfg);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* __MEDIAPI_H__ */
 

@@ -9,7 +9,6 @@
 
 #include "aml_isp_tuning.h"
 
-namespace Ov08a10WdrCalibration {
 //aisp_top_ctl_t
 static int32_t _CALIBRATION_TOP_CTL[50] = {
     1, // ISP input channels n+1
@@ -1867,6 +1866,5 @@ int dynamic_wdr_calibrations_init_ov08a10(aisp_calib_info_t *calib)
     calib->calibrations[CALIBRATION_AWB_PRESET] = &calibration_awb_preset;
 
     return 0;
-}
 }
 

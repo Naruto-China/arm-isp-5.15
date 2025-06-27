@@ -29,20 +29,20 @@
 
 #include "aml_isp_api.h"
 
-#include "imx290_sdr_calibration.h"
-#include "imx290_wdr_calibration.h"
 #include "imx290_api.h"
 #include "logs.h"
 
-
 typedef struct
 {
-    int  enWDRMode = 0;
+    int enWDRMode;
     ALG_SENSOR_DEFAULT_S snsAlgInfo;
     struct media_entity  * sensor_ent;
 } ISP_SNS_STATE_S;
 
 static ISP_SNS_STATE_S sensor;
+
+extern int dynamic_wdr_calibrations_init_imx290(aisp_calib_info_t *calib);
+extern int dynamic_sdr_calibrations_init_imx290(aisp_calib_info_t *calib);
 
 void cmos_set_sensor_entity_imx290(struct media_entity * sensor_ent, int wdr)
 {
@@ -54,9 +54,9 @@ void cmos_set_sensor_entity_imx290(struct media_entity * sensor_ent, int wdr)
 void cmos_get_sensor_calibration_imx290(struct media_entity *sensor_ent, aisp_calib_info_t *calib)
 {
     if (sensor.enWDRMode == 1)
-        Imx290WdrCalibration::dynamic_wdr_calibrations_init_imx290(calib);
+        dynamic_wdr_calibrations_init_imx290(calib);
     else
-        Imx290SdrCalibration::dynamic_sdr_calibrations_init_imx290(calib);
+        dynamic_sdr_calibrations_init_imx290(calib);
 }
 
 int cmos_get_ae_default_imx290(int ViPipe, ALG_SENSOR_DEFAULT_S *pstAeSnsDft)

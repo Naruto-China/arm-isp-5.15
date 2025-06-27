@@ -1,4 +1,4 @@
-/**
+/*
  *  @file
  *
  *  @copyright Copyright (c) 2021 Amlogic, Inc.
@@ -10,10 +10,8 @@
  *  Amlogic, Inc. or its authorized affiliates.  In the absence of such an agreement, you agree to promptly notify and
  *  return this Software to Amlogic, Inc.
  *
- **/
+ */
 #include "aml_isp_tuning.h"
-
-namespace Imx415WdrCalibration {
 
 //calibration_version
 static int32_t _CALIBRATION_VERSION[1] = {20230815};
@@ -1932,6 +1930,5 @@ int dynamic_wdr_calibrations_init_imx415(aisp_calib_info_t *calib)
     calib->calibrations[CALIBRATION_AWB_PRESET] = &calibration_awb_preset;
 
     return 0;
-}
 }
 

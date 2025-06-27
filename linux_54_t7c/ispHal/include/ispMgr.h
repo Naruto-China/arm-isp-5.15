@@ -35,6 +35,10 @@ const size_t kIspParamsNbBuffers = 1;
 const size_t kIspParamsWidth = 1024;
 const size_t kIspParamsHeight = 256;
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef void (*isp_alg2user)(uint32_t ctx_id, void *param);
 typedef void (*isp_alg2kernel)(uint32_t ctx_id, void *param);
 typedef void (*isp_enable)(uint32_t ctx, void *pstAlgCtx, void *calib);
@@ -65,5 +69,9 @@ struct v4l2BufferInfo {
     struct v4l2_format         format;
     struct bufferInfo          mem[8];
 };
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

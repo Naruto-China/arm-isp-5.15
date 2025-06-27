@@ -216,7 +216,7 @@ int isp_param_init(struct media_stream v4l2_media_stream, struct config_param *t
         return -1;
     }
 
-    tparm->sensorCfg = matchSensorConfig(&v4l2_media_stream);
+    tparm->sensorCfg = matchSensorConfigByStream(&v4l2_media_stream);
     if (tparm->sensorCfg == nullptr) {
         ERR("Failed to matchSensorConfig");
         return -1;
@@ -331,7 +331,7 @@ int prepare_media_stream(struct config_param  *tparm)
     media_set_wdrMode(&tparm->v4l2_media_stream, 0);
     media_set_wdrMode(&tparm->v4l2_media_stream, tparm->wdr_mode);
 
-    android::staticPipe::fetchPipeMaxResolution(&tparm->v4l2_media_stream, tparm->width, tparm->height);
+    fetchPipeMaxResolution(&tparm->v4l2_media_stream, &tparm->width, &tparm->height);
 
     /* config & set format */
     stream_configuration     stream_config ;

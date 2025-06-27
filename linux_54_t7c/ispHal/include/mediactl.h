@@ -12,6 +12,9 @@
 
 #include <linux/media.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 struct media_device;
 struct media_entity;
@@ -469,7 +472,9 @@ int media_parse_setup_links(struct media_device *media, const char *p);
 
 void media_print_streampos(struct media_device *media, const char *p,
                const char *end);
-
+#ifdef __cplusplus
+}
+#endif
 
 #define media_dbg(media, fmt, ...) \
     (media)->debug_handler(fmt, ##__VA_ARGS__)

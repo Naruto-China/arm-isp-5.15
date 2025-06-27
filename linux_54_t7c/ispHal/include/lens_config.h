@@ -34,16 +34,24 @@
 #include "aml_isp_api.h"
 #include "mediaApi.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct lensConfig {
 	const char *lensName;
 	ALG_LENS_FUNC_S lensFunc;
 	void (*lens_set_entity)(struct media_entity *ent);
 };
 
-struct lensConfig *matchLensConfig(media_stream_t *stream);
-struct lensConfig *matchLensConfig(const char *lensEntityName);
+struct lensConfig *matchLensConfigByStream(media_stream_t *stream);
+struct lensConfig *matchLensConfigByName(const char *lensEntityName);
 void lens_control_cb(struct lensConfig *cfg, ALG_LENS_FUNC_S *stLens);
 void lens_set_entity(struct lensConfig *cfg, struct media_entity *lens_ent);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif
 

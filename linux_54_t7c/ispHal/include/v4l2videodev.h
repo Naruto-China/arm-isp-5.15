@@ -10,6 +10,9 @@
 #ifndef  V4L2_VIDEO_DEV_H
 #define  V4L2_VIDEO_DEV_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 int v4l2_video_open(struct media_entity *entity);
 
@@ -47,6 +50,9 @@ int v4l2_video_stream_on(struct media_entity *entity, int type);
 
 int v4l2_video_stream_off(struct media_entity *entity, int type);
 
+#ifdef __cplusplus
+}
+#endif
 
 #endif
 

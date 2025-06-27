@@ -1,41 +1,40 @@
 OUT_DIR ?= .
 $(info "OUT_DIR : $(OUT_DIR)")
 
-TUNING_SUBDIR := $(shell dirname $(lastword $(MAKEFILE_LIST)))
-TUNING_SUBDIR_DTS := $(TUNING_SUBDIR)/imx290
-TUNING_SUBDIR_DTS_1 := $(TUNING_SUBDIR)/ov08a10
-SRCS = $(shell find $(TUNING_SUBDIR) -name '*.cpp')
-OBJS = $(patsubst %.cpp,%.o,$(SRCS))
+SRC_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
+INC_DIR := $(SRC_DIR)/../include
+SRCS := $(wildcard $(SRC_DIR)/*.c \
+                   $(SRC_DIR)/imx290/*.c \
+                   $(SRC_DIR)/imx415/*.c \
+                   $(SRC_DIR)/ov08a10/*.c)
 
-#LOCAL_PATH := $(shell dirname $(lastword $(MAKEFILE_LIST)))
+OBJDIR = $(OUT_DIR)/objs
+OBJ = $(patsubst $(SRC_DIR)/%.c, $(OBJDIR)/%.o, $(SRCS))
 
-ISP_ROOT_DIR := $(TUNING_SUBDIR)/..
-LOCAL_INCLUDES := -I$(ISP_ROOT_DIR)/include/
-LOCAL_INCLUDES += -I$(TUNING_SUBDIR_DTS)
-LOCAL_INCLUDES += -I$(TUNING_SUBDIR_DTS_1)
+TARGETLIB_SO = $(OUT_DIR)/libsns.so
 
-CFLAGS += -I ./include/
-CFLAGS += -I ./kernel-headers/
-CFLAGS += $(LOCAL_INCLUDES)
+CFLAGS = -Wall -fPIC -Werror -g -O2
+CFLAGS += -I $(INC_DIR) \
+  -I $(SRC_DIR)/imx290 \
+  -I $(SRC_DIR)/imx415 \
+  -I $(SRC_DIR)/ov08a10
 
-LIBTUNING = libtuning.so
+LDFLAGS += -lm -shared
 
-
-.PHONY: clean
+.PHONY: all clean
 
 # rules
-all: $(LIBTUNING)
-	@echo "CXX is: $(CXX)"
+all: $(TARGETLIB_SO)
 
-%.o: %.cpp
-#%.o: $(TUNING_SUBDIR) %.cpp
-	$(CC) -c -fPIC  $(CFLAGS) $^ -o $(OUT_DIR)/$@
+$(TARGETLIB_SO): $(OBJ)
+	$(CC) $(LDFLAGS) $^ -o $@
 
-$(LIBTUNING): $(OBJS)
-	$(CXX) -shared  -Wl,-soname,$(LIBTUNING) -fPIC $(CFLAGS) $(patsubst %,$(OUT_DIR)/%,$^) -o $(OUT_DIR)/$(LIBTUNING)
+$(OBJDIR)/%.o: $(SRC_DIR)/%.c
+	@echo "[CC] $<"
+	@mkdir -p $(dir $@)
+	@$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
-	rm -f $(patsubst %,$(OUT_DIR)/%,$(OBJS)) $(OUT_DIR)/$(LIBTUNING)
+	rm -f $(OBJ) $(TARGETLIB_SO)
 
 $(shell mkdir -p $(OUT_DIR))
-$(shell mkdir -p $(patsubst %,$(OUT_DIR)/%,$(dir $(SRCS))))
