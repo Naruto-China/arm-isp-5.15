@@ -9,6 +9,7 @@
 
 #include "aml_isp_tuning.h"
 
+static int32_t _CALIBRATION_VERSION[1] = {20250410};
 //aisp_top_ctl_t
 static int32_t _CALIBRATION_TOP_CTL[50] = {
     0, // ISP input channels n+1
@@ -26,7 +27,7 @@ static int32_t _CALIBRATION_TOP_CTL[50] = {
     0, // lcge enable 0:off 1:on
     1, // pdpc enable 0:off 1:on
     1, // cac enable 0:off 1:on
-    0, // rawcnr enable 0:off 1:on
+    1, // rawcnr enable 0:off 1:on
     1, // snr1 enable 0:off 1:on
     1, // mc_tnr enable 0:off 1:on
     1, // tnr0 enable 0:off 1:on
@@ -34,7 +35,7 @@ static int32_t _CALIBRATION_TOP_CTL[50] = {
     1, // ltm enable 0:off 1:on
     0, // gtm enable 0:off 1:on
     1, // lns_mesh enable 0:off 1:on
-    0, // lns_rad enable 0:off 1:on
+    1, // lns_rad enable 0:off 1:on
     1, // wb enable 0:off 1:on
     1, // blc enable 0:off 1:on
     1, // nr enable 0:off 1:on
@@ -78,7 +79,7 @@ static uint32_t _CALIBRATION_RES_CTL[7] = {
 static int32_t _CALIBRATION_AWB_CTL[25] = {
     1,       // u8, AWB auto enable
     1,       // u8, AWB manual mode, 0: manual gain mode, 1: manual temperature mode
-    32,      //u8, AWB convergence speed.
+    45,      //u8, AWB convergence speed.
     0,       //u8, mixed color temperature mode option. 0:mix mode 1:outdoor mode 2:indoor mode 3:auto mode
     32,      //u16, a cover range around planck curve
     1,       //u1, color temperature dynamic cover range enable
@@ -89,8 +90,8 @@ static int32_t _CALIBRATION_AWB_CTL[25] = {
     1,       //u1, awb delay adjust enable
     10,      //u16, awb delay frame count
     200,     //u16, awb delay adjust tolerance by color temperature
-    0,       //u16, awb low luma ratio
     0,       //u1, awb Remove reference color
+    0,       //u16, awb low luma ratio
     256,     //u1, awb color shading range
     256,     //u16, manual awb mode red gain
     256,     //u16, manual awb mode blue gain
@@ -98,10 +99,13 @@ static int32_t _CALIBRATION_AWB_CTL[25] = {
     0,       //bit[0] color temperature hist, [1] weight table, [2] ct table, [3] log
     0,       //u1, awb stable mode enable
     100,     //u16, awb stable mode ct delta det
-    100,     //u16, awb stable mode color delta det
+    100,    //u16, awb stable mode color delta det
     0,      //u1, awb roi enable
     1,      //u12, awb roi weight init
 };
+
+static uint8_t _CALIBRATION_AWB_WEIGHT_H[17] = {16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16};
+static uint8_t _CALIBRATION_AWB_WEIGHT_V[15] = {16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16};
 
 //_CALIBRATION_AWB_CT_POS
 static uint32_t _CALIBRATION_AWB_CT_POS[20] = {10000,7500,6500,5000,4050,3850,2800,2200};
@@ -121,6 +125,12 @@ static int32_t _CALIBRATION_AWB_CT_DYN_CVRANGE[2][20] = {
     {-10,-8,-2,16,8,-12,-12,-16},
 };
 
+//_CALIBRATION_AWB_REF_REMOVE_LUT
+static int32_t _CALIBRATION_AWB_REF_REMOVE_LUT[20][3] =
+{
+    {2051, 1928, 64},
+};
+
 //aisp_ae_t
 static int32_t _CALIBRATION_AE_CTL[32] = {
     1,  //ae auto enable
@@ -128,7 +138,7 @@ static int32_t _CALIBRATION_AE_CTL[32] = {
     0,  //ae exposure strategy, 0: none mode, 1: outdoor mode, 2:indoor mode
     0,  // ae route strategy, 0: exposure priority, 1: gain priority 2: external ae route
     3,  //ae route deflicker mode, 0: none, 1: anti-50hz, 2: anti-60hz, 3: auto detected
-    30,   //exposure convergence speed [0, 128]
+    64,   //exposure convergence speed [0, 128]
     128,  //ae global luma target compensation
     170,  //ae luma target srgb curve
     60,   //ae luma wdr target
@@ -138,28 +148,67 @@ static int32_t _CALIBRATION_AE_CTL[32] = {
     0,    // [0,1024] high light reduce trigger threshold
     128,    // [0,1024] high light reduce strength
     35,   //ae tolerance//10
-    1, //ae delay adjust enable
+    0, //ae delay adjust enable
     30, //ae delay frame count
     150, //ae delay adjust tolerance//100
-    (2<<12), //WDR mode only: ae WDR mode low light threshold by log2 value of gain
+    400, //WDR mode only: ae WDR mode low light threshold, use ISO representation, ISO = times * 100
     77,   //WDR mode only: Max percentage of clipped pixels for long exposure: WDR mode only: 256 = 100% clipped pixels
     15,   //WDR mode only: Time filter for exposure ratio
     0,   //reduce fps feature enable.
-    15*256,        //target fps of reduce frame rates.
-    15238,   //trigger threshold of the reduce fps, write gain log2 value.
-    (1<<10),   //lag threshold of the reduce fps, write gain log2 value.
-    (1<<12),        // max isp gain limit, exp: x4 = log2(4)<<12 = 2<<12
-    (1000<<12),     // max shutter time limit, exp:  1000ms = 1000<<12
-    (20193),       // max total gain limit, exp:x1024 = log2(1024)<<12 = 10<<12, 54db = (54/6)<<12 = 9<<12
-    (16<<6),       // max exposure ratio limit, exp: x128 = 128<<6
-    (200*(1<<10)),  //  Light intensity at full exposure and zero gain , exp: 128lux = 128<<16
+    15,        //target fps of reduce frame rates.
+    1600,   //trigger threshold of the reduce fps, use ISO representation, ISO = times * 100.
+    50,   //lag threshold of the reduce fps, use ISO representation, (trigger threshold + lag threshold) or (trigger threshold - lag threshold).
+    200,        // max isp gain limit, use ISO representation, ISO = times * 100
+    1000000,     // max shutter time limit, this is absolute time, unit is us
+    1600,       // max total gain limit, use ISO representation, ISO = times * 100
+    16,       // max exposure ratio limit, this is times.
+    (200*(1<<10)),  //  Light intensity at full exposure and zero gain , exp: 128lux = 128*(1<<10)
     2,       //feedback delay frame numbers of stats info in current system
-    0,       //ae debug:bit[0] target, [1] ratio, [2] exposure calculate
+    2,       //ae debug:bit[0] target, [1] ratio, [2] exposure calculate
 };
 
-static int32_t _CALIBRATION_AE_CORR_LUT[64] =  {128, 128, 128, 100, 80, 60, 40, 20, 20, 20};
+//aisp_highlight_det_t
+static int32_t _CALIBRATION_HIGHLIGHT_DETECT[27] = {
+    //highlight all
+    0,                  /**< u1, highlight enable, 0:disable; 1:enable */
+    1,                  /**< u1, highlight mode, 0: manual, 1: auto */
+    128,                /**< u8, manual highlight strength,range(0,255),recommend is (0,230), default is 128  */
+    // highlight auto
+    0,                  /**< u1, auto highlight car enable, if enable, when detected car light scene, will do highlight suppressive */
+    128,                /**< u8, auto highlight car strength, range(0,255),recommend is (0,230), default is 128  */
+    0,                  /**< u1, auto highlight window enable, if enable, when detected window scene, will do highlight suppressive */
+    128,                /**< u8, auto highlight window strength, range(0,255),recommend is (0,128), default is 128 */
+    //backlight compensation
+    0,                  /**< u1,backligh compensation enable, 0:disable;1:enable */
+    128,                /**< u8, backlight compensation strength,range(0,255),recommend is (0,230), default is 128  */
+    //global
+    102,                /**< u10, is used for highcontrast detect,the larger the value, the more difficult it is to detect as high-contrast scenes,default is 102 */
+    1023,               /**< u12, is used for highcontrast detect,the smaller the value, the more difficult it is to detect as high-contrast scenes,default is 1023 */
+    700,                /**< u10, is used for highcontrast detect,the larger the value, the more difficult it is to detect as high-contrast scenes,default is 700 */
+    //local
+    230,                /**< u8, the ratio0 to entry car light sense, the larger the vlaue, the more difficult to entry car light scene,default is 230*/
+    20,                 /**< u8, the ratio1 to entry car light sense, the larger the vlaue, the more difficult to entry car light scene,default is 20*/
+    0,                  /**< u8, the ratio2 to entry car light sense, the larger the vlaue, the more difficult to entry car light scene,default is 0*/
+    2,                  /**< u4, local block threshold, if highlight area more than blk0xblk0, and less than (blk0+delta)x(blk0+delta),if no consider attenuation, it is car light scene,default is 2 */
+    2,                  /**< u4, local block delta,if highlight area more than blk0xblk0, and less than (blk0+delta)x(blk0+delta),if no considerattenuation, it is car light scene,default is 2*/
+    128,                /**< u8, the ratio0 to exit car light sense, the smaller the vlaue, the more difficult to exit,default is 128*/
+    24,                 /**< u8, the ratio1 to exit car light sense, the smaller the vlaue, the more difficult to exit,default is 24*/
+    5,                  /**< u8, auto highlight delay, default is 5*/
+    10,                 /**< u5, auto highlight sense change threshold , default is 10  */
+    //attenuation
+    1,                  /**< u1, highlight attenuation enable, is used for car light detect, 0: disable, 1:enable */
+    7,                  /**< u8, highlight attenuation threshold, is used for car light detect, default is 7*/
+    6,                  /**< u4, highlight attenuation count, is used for car light detect, default is 6, max is 8*/
+    //lowlight
+    1,                  /**< u1, lowlight enable, 0: disable, 1:enable */
+    20,                 /**< u5, 1: lowlight strength, default is 16 */
+    //debug
+    0,                  /**< u2, 1: print highlight/backlight parameters, 2, print car detect parameters,default is 0 */
+};
 
-static int32_t _CALIBRATION_AE_CORR_POS_LUT[64] = {41516+(0<<12), 41516+(1<<12), 41516+(2<<12), 41516+(3<<12), 41516+(4<<12), 41516+(5<<12),41516+(6<<12),41516+(7<<12),41516+(8<<12),41516+(9<<12)};
+static int32_t _CALIBRATION_AE_CORR_LUT[64] =  {128, 128, 128,128, 128, 128, 100, 80, 60, 40, 20, 20, 20};
+
+static int32_t _CALIBRATION_AE_CORR_POS_LUT[64] = {34565+(0<<12),38661+(0<<12),42757+(0<<12),45757+(0<<12), 45757+(1<<12), 45757+(2<<12), 45757+(3<<12), 45757+(4<<12), 45757+(5<<12),45757+(6<<12),45757+(7<<12),45757+(8<<12),45757+(9<<12)};
 
 static int32_t _CALIBRATION_AE_ROUTE[1+2*16] = {
 /* shuttertime  | gain*/
@@ -194,21 +243,14 @@ static uint8_t _CALIBRATION_AE_WEIGHT_T[15][17] = {
 };
 
 //aisp_dn_det_t
-static int32_t _CALIBRATION_DAYNIGHT_DETECT[14] = {
+static int32_t _CALIBRATION_DAYNIGHT_DETECT[7] = {
     0,    //light_control; 1:0n, 0: off
-    0,    // hist_stat_mode; 0: average based AE, 1: weight
-    120,  // predict_day_thr;  default is 50
-    60,   // predict_night_thr; default is 50
-    8,    // dn_det_tran_ratio; default 16/128
-    240,  // dn_det_day_thr; default 60
-    240,  // dn_det_night_thr;  default 240
-    2000, // dn_det_light_ct_low;
-    5000, // dn_det_light_ct_high;
-    1023, //dn_wdr_mean_ratio
-    300, // dn_rg_blk_sum_thr
-    400, //dn_rg_thr
-    400, //dn_bg_thr
-    0, //print_debug 0:not print 1:print
+    0,    // status;
+    70,   /**< u10, day brightness threshold, default is 70 */
+    2500, /**< u10, night ir brightness threshold, default is 2500 */
+    250,  /**< u10, night ir visible_light/IR threshold, default is 250*/
+    2000, /**< u10, night light brightness threshold, default is 2000*/
+    0,    /**< u1, daynight debug enable, default is 0*/
 };
 
 //aisp_af_t
@@ -246,7 +288,7 @@ static uint32_t _CALIBRATION_FLICKER_CTL[20] = {
     1,      //u32, whether delete invalid flicker
     0,      //u32, 0: half (reg_flkr_stat_yed-reg_flkr_stat_yst) statistic, 1: the whole (reg_flkr_stat_yed-reg_flkr_stat_yst) statistic.
     1,      //u32, 0:no lpf,1: [1 2 1]/4, 2: [1 2 2 2 1]/8, 3: [1 1 1 2 1 1 1]/8, 4 or else: [1 2 2 2 2 2 2 2 1]/16, lpf of row avg for flicker detection
-    30,      //u32, output flicker result after flkr_det_cnt
+    10,      //u32, output flicker result after flkr_det_cnt
     64000,  //u32, peaks/valleys interval thrd for valid wave
     3,      //u32, peaks/valleys value for valid wave
     5,     //u32, peaks/valleys value difference for valid wave
@@ -255,14 +297,14 @@ static uint32_t _CALIBRATION_FLICKER_CTL[20] = {
     1,      //u32, fft mlen, default value is recommended
     100,      //u32, fft norm, default value is recommended
     1000,   //u32, threshold for valid flicker of fft, default value is recommended
-    1,      //u32, sensor exposure information adjust gain, default is 1, 2x2bin is 2
-    20,     //u32, normalize to u4
+    16,   //u32, sensor exposure information adjust gain, default value is 16, if max_exposure = VTS*2, so value is 8
+    17,     //u32, normalize to u4
     500,    //u32, flkr_det_sum_pdif_th
     150,    //u32 flkr_det_scan_ofst
     20,     //u32 flkr_det_wave_ofst
     2000,   //u32 flkr_det_ae_diff_th
     10,     //u32 flkr_det_noflkr_cnt_th
-    30,     //u32 sum_pdif ratio
+    3,     //u32 flkr_det_pdif_ratio
 };
 
 static uint16_t _CALIBRATION_GTM[129]= {
@@ -580,13 +622,13 @@ static uint16_t _CALIBRATION_SNR_GLB_ADJ[ISO_NUM_MAX][6] = {
 //aisp_snr_adj_t
 static int16_t _CALIBRATION_SNR_ADJ[ISO_NUM_MAX][16] = {
 /*weight|NP adj|cor_profile_adj|cor_profile_ofst|sad_wt_sum_th[2]|th_x0 x1 x2|var_flat_th_y[3]|sad_meta_ratio[4]*/
-    { 72,    256,    28,    0,    1600,1024,    64,4,5,    32,44,48,    12,14,16,20,},
-    { 80,    256,    31,    0,    1600,1024,    64,4,5,    32,44,48,    12,14,16,20,},
-    { 96,    256,    32,    0,    1800,1024,    64,4,5,    32,44,48,    12,14,16,20,},
-    {100,    256,    33,    0,    1800,1024,    64,4,5,    32,44,48,    12,14,16,20,},
-    {100,    256,    33,    0,    1800,1024,    64,4,5,    32,44,48,    12,14,16,16,},
-    {100,    256,    32,    0,    2000,1024,    64,7,8,    32,44,63,    8,10,12,16,},
-    {100,    256,    32,    0,    2000,1536,    64,7,8,    32,48,63,    8,10,12,16,},
+    { 72,    256,    24,    0,    1600,1024,    64,4,5,    32,44,48,    12,14,16,20,},
+    { 80,    256,    24,    0,    1600,1024,    64,4,5,    32,44,48,    12,14,16,20,},
+    { 96,    256,    24,    0,    1600,1024,    64,4,5,    32,44,48,    12,14,16,20,},
+    {100,    256,    28,    0,    1600,1024,    64,4,5,    32,44,48,    12,14,16,20,},
+    {100,    256,    28,    0,    1700,1024,    64,4,5,    32,44,48,    12,14,16,16,},
+    {100,    256,    30,    0,    1800,1024,    64,7,8,    32,44,63,    8,10,12,16,},
+    {100,    256,    30,    0,    2000,1536,    64,7,8,    32,48,63,    8,10,12,16,},
     {100,    256,    32,    4,    2100,2048,    64,7,8,    32,48,63,    8,10,12,16,},
     {100,    256,    32,    4,    2100,2048,    64,7,8,    32,48,63,    8,10,12,16,},
     {100,    256,    32,    6,    2100,2048,    64,7,8,    32,48,63,    8,10,12,16,},
@@ -608,41 +650,41 @@ static uint16_t _CALIBRATION_SNR_CUR_WT[ISO_NUM_MAX][8] = {
 
 //aisp_snr_t->snr_wt_luma_gain
 static uint8_t _CALIBRATION_SNR_WT_LUMA_GAIN[ISO_NUM_MAX][8] = {
-    {12,12,10,10,10,16,20,30,},
-    {12,12,10,10,18,20,20,30,},
-    {16,16,10,10,22,22,20,30,},
-    {16,16,10,10,22,24,26,32,},
-    {16,16,16,16,24,26,32,32,},
-    {16,16,16,16,28,30,32,32,},
-    {28,28,24,24,30,32,32,32,},
-    {32,32,32,32,32,32,32,32,},
-    {32,32,32,32,32,32,32,32,},
+    {10,6,5,4,4,8,20,30,},
+    {12,8,7,4,4,8,20,30,},
+    {16,15,8,6,6,10,20,30,},
+    {16,16,10,10,10,16,24,32,},
+    {16,16,14,14,14,18,30,32,},
+    {16,16,16,14,14,24,32,32,},
+    {26,26,18,16,16,28,32,32,},
+    {32,32,30,30,24,32,32,32,},
+    {32,32,30,30,26,32,32,32,},
     {32,32,32,32,32,32,32,32,},
 };
 
 //aisp_snr_t->snr_sad_meta2alp
 static uint8_t _CALIBRATION_SNR_SAD_META2ALP[ISO_NUM_MAX][8] = {
-    {180,160,140,120,96,48,24,12,},
-    {190,170,150,130,110,64,32,16,},
-    {200,180,160,140,120,86,48,24,},
-    {210,190,170,150,130,96,56,32,},
-    {220,200,180,160,140,110,64,48,},
-    {230,210,190,170,150,120,72,56,},
-    {240,220,200,180,160,130,72,56,},
-    {250,230,210,190,170,140,72,56,},
-    {250,230,210,190,170,140,72,56,},
+    {120,100,72,64,45,20,6,6,},
+    {130,100,80,72,56,24,6,6,},
+    {130,110,90,80,64,36,8,8,},
+    {150,130,100,90,72,45,12,10,},
+    {150,130,100,90,72,48,16,12,},
+    {180,150,130,100,86,56,20,16,},
+    {220,200,180,140,100,72,30,22,},
+    {240,230,210,180,130,100,68,28,},
+    {250,230,210,190,170,140,72,28,},
     {250,230,210,190,170,140,72,56,},
 };
 
 //aisp_snr_t->snr_meta_adj
 static uint8_t _CALIBRATION_SNR_META_ADJ[ISO_NUM_MAX][8] = {
-    {32,32,32,32,28,12,6,6,},
-    {32,32,32,32,28,16,10,10,},
-    {32,32,32,32,32,22,11,11,},
-    {32,32,32,32,32,28,12,12,},
-    {28,28,30,30,32,30,16,16,},
-    {26,26,26,28,28,30,20,20,},
-    {45,26,26,28,28,30,26,22,},
+    {32,32,30,26,20,10,6,6,},
+    {32,32,30,26,22,14,6,6,},
+    {32,32,30,28,26,18,8,8,},
+    {32,32,30,30,28,20,12,12,},
+    {32,32,30,30,28,20,14,14,},
+    {36,32,30,30,28,30,20,20,},
+    {45,32,30,30,28,30,26,22,},
     {60,55,40,32,30,30,32,32,},
     {60,55,40,32,30,30,32,32,},
     {60,55,40,32,30,30,32,32,},
@@ -656,9 +698,9 @@ static uint8_t _CALIBRATION_SNR_PHS[4][24] = {
 };
 
 static uint8_t _CALIBRATION_NR_RAD_LUT65[3][65] = {
+    {64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 96,},
     {64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 128,},
-    {64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 128,},
-    {64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 128, 128, 128, 128, 128,},
+    {64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 96, 128, 128,},
 };
 
 //aisp_psnr_adj_t
@@ -710,20 +752,20 @@ static uint16_t _CALIBRATION_TNR_GLB_ADJ[ISO_NUM_MAX][4] = {
 static int16_t _CALIBRATION_TNR_ADJ[ISO_NUM_MAX][26] = {
 /*tnr_np_gain|tnr_np_ofst|ma_mix_h_th_gain[4]|reg_ma_mix_h_th_y|reg_ma_mix_l_th_y|reg_ma_sad_var_th_x_xx|reg_ma_sad_var_th_y_xx|me_sad_cor_np_gain|me_sad_cor_np_ofst|me_meta_sad_th0|reg_me_meta_sad_th1*/
     { 4,     0,    16,20,24,24,    20,30,40,    20,30,40,    50,4,5,    32,32,32,     0,    0,    10,20,30,    10,20,30,},
-    {10,     0,    16,20,24,24,    20,30,40,    20,30,40,    50,4,5,    32,32,32,     0,    0,    10,20,30,    10,20,30,},
-    {12,     0,    16,20,24,24,    20,30,40,    20,30,40,    50,4,5,    32,32,32,    10,    0,    10,20,30,    10,20,30,},
-    {14,     0,    16,20,24,24,    20,30,40,    20,30,40,    50,4,5,    32,32,32,    10,    0,    10,20,30,    10,20,30,},
-    {18,     0,    16,20,24,24,    20,30,40,    20,30,40,    50,4,5,    32,32,32,    12,    0,    10,20,30,    10,20,30,},
-    {18,     0,    16,20,22,24,    30,30,40,    30,30,40,    50,4,5,    32,32,32,    14,    0,    10,20,30,    10,20,30,},
+    {6,     0,    16,20,24,24,    20,30,40,    20,30,40,    50,4,5,    32,32,32,     0,    0,    10,20,30,    10,20,30,},
+    {8,     0,    16,20,24,24,    20,30,40,    20,30,40,    50,4,5,    32,32,32,    0,    0,    10,20,30,    10,20,30,},
+    {10,     0,    16,20,24,24,    20,30,40,    20,30,40,    50,4,5,    32,32,32,    0,    0,    10,20,30,    10,20,30,},
+    {12,     0,    16,20,24,24,    20,30,40,    20,30,40,    50,4,5,    32,32,32,    4,    0,    10,20,30,    10,20,30,},
+    {18,     0,    16,20,22,24,    30,30,40,    30,30,40,    50,4,5,    32,32,32,    12,    0,    10,20,30,    10,20,30,},
     {18,     0,    16,20,22,24,    30,40,50,    25,35,45,    50,4,5,    32,32,32,    14,    0,    10,20,30,    10,20,30,},
     {20,     8,    25,35,40,50,    35,40,50,    25,35,45,    40,4,5,    32,32,32,     24,    0,    10,20,30,    10,20,30,},
     {30,    12,    30,40,45,55,    75,75,75,    50,50,50,    40,4,5,    32,32,32,     24,    0,    10,20,30,    10,20,30,},
     {30,    12,    30,40,45,55,    75,75,75,    50,50,50,    40,4,5,    32,32,32,     24,    0,    10,20,30,    10,20,30,},
 };
 
-//aisp_tnr_glb_adj_t
+//aisp_tnr_ratio_t
 static int16_t _CALIBRATION_TNR_RATIO[RATIO_NUM_MAX][10] = {
-/*tnr_sad_cor_np_gain_ratio|tnr_sad_cor_np_gain_ratio|tnr_ma_sad_th_mask_gain_ratio|tnr_ma_mix_th_mask_gain_ratio*/
+/*tnr_sad_cor_np_gain_ratio|tnr_sad_cor_np_ofst_ratio|tnr_ma_sad_th_mask_gain_ratio|tnr_ma_mix_th_mask_gain_ratio*/
     {256,    0,    64,64,64,64,    64,64,64,64,},
     {256,    0,    64,64,64,64,    64,64,64,64,},
     {256,    0,    64,64,64,64,    64,64,64,64,},
@@ -736,44 +778,44 @@ static int16_t _CALIBRATION_TNR_RATIO[RATIO_NUM_MAX][10] = {
 
 //aisp_tnr_t->nr_ma_sad2alpha
 static uint8_t _CALIBRATION_TNR_SAD2ALPHA[ISO_NUM_MAX][64] = {
-    {12,10,8,6,6,0,0,0, 32,32,32,31,31,30,30,29, 38,38,38,37,37,36,36,35, 42,42,42,41,41,40,40,39, 46,45,44,43,40,40,40,40, 50,50,50,49,49,48,48,47, 52,52,52,52,52,52,52,52, 55,55,55,55,55,55,55,55,},
-    {12,10,8,6,6,0,0,0, 32,32,32,31,31,30,30,29, 38,38,38,37,37,36,36,35, 42,42,42,41,41,40,40,39, 46,45,44,43,40,40,40,40, 50,50,50,49,49,48,48,47, 56,56,56,55,55,54,54,53, 60,60,60,60,60,60,60,60,},
-    {12,10,8,6,6,0,0,0, 32,32,32,31,31,30,30,29, 38,38,38,37,37,36,36,35, 42,42,42,41,41,40,40,39, 46,45,44,43,40,40,40,40, 50,50,50,49,49,48,48,47, 56,56,56,55,55,54,54,53, 60,60,60,60,60,60,60,60,},
-    {12,10,8,6,6,0,0,0, 32,32,32,31,31,30,30,29, 38,38,38,37,37,36,36,35, 42,42,42,41,41,40,40,39, 46,45,44,43,40,40,40,40, 50,50,50,49,49,48,48,47, 56,56,56,55,55,54,54,53, 60,60,60,60,60,60,60,60,},
-    {12,10,8,6,6,0,0,0, 32,32,32,31,31,30,30,29, 38,38,38,37,37,36,36,35, 42,42,42,41,41,40,40,39, 46,45,44,43,40,40,40,40, 50,50,50,49,49,48,48,47, 56,56,56,55,55,54,54,53, 60,60,60,60,60,60,60,60,},
-    {12,10,8,6,6,0,0,0, 32,32,32,31,31,30,30,29, 38,38,38,37,37,36,36,35, 42,42,42,41,41,40,40,39, 46,45,44,43,40,40,40,40, 50,50,50,49,49,48,48,47, 56,56,56,55,55,54,54,53, 60,60,60,60,60,60,60,60,},
-    {18,18,14,14,10,10,8,6, 32,32,32,31,31,30,30,29, 38,38,38,37,37,36,36,35, 42,42,42,41,41,40,40,39, 46,45,44,43,40,40,40,40, 50,50,50,49,49,48,48,47, 56,56,56,55,55,54,54,53, 60,60,60,60,60,60,60,60,},
-    {18,18,14,14,10,10,8,6, 32,32,32,31,31,30,30,29, 38,38,38,37,37,36,36,35, 42,42,42,41,41,40,40,39, 46,45,44,43,40,40,40,40, 50,50,50,49,49,48,48,47, 56,56,56,55,55,54,54,53, 62,62,62,60,60,60,60,60,},
-    {18,18,14,14,10,10,8,6, 32,32,32,31,31,30,30,29, 38,38,38,37,37,36,36,35, 42,42,42,41,41,40,40,39, 46,45,44,43,40,40,40,40, 50,50,50,49,49,48,48,47, 56,56,56,55,55,54,54,53, 62,62,62,60,60,60,60,60,},
-    {18,18,14,14,10,10,8,6, 32,32,32,31,31,30,30,29, 38,38,38,37,37,36,36,35, 42,42,42,41,41,40,40,39, 46,45,44,43,40,40,40,40, 50,50,50,49,49,48,48,47, 56,56,56,55,55,54,54,53, 62,62,62,60,60,60,60,60,},
+    {2,1,0,0,0,0,0,0, 16,16,16,15,15,15,14,14, 20,20,20,19,19,18,18,18, 24,24,24,23,23,23,22,22, 28,28,28,27,27,26,26,25, 30,30,29,29,28,28,27,26, 36,36,36,35,35,34,34,34, 40,40,40,40,40,40,38,38,},
+    {2,1,0,0,0,0,0,0, 16,16,16,15,15,15,14,14, 20,20,20,19,19,18,18,18, 24,24,24,23,23,23,22,22, 28,28,28,27,27,26,26,25, 30,30,29,29,28,28,27,26, 36,36,36,35,35,34,34,34, 45,45,45,45,45,43,41,40,},
+    {2,1,0,0,0,0,0,0, 16,16,16,15,15,15,14,14, 20,20,20,19,19,18,18,18, 24,24,24,23,23,23,22,22, 28,28,28,27,27,26,26,25, 30,30,29,29,28,28,27,26, 38,38,38,37,36,36,36,36, 48,48,48,48,48,46,45,44,},
+    {2,1,0,0,0,0,0,0, 16,16,16,15,15,15,14,14, 20,20,20,19,19,18,18,18, 24,24,24,23,23,23,22,22, 28,28,28,27,27,26,26,25, 30,30,29,29,28,28,27,26, 38,38,38,37,36,36,36,36, 54,54,54,54,52,50,50,48,},
+    {2,1,0,0,0,0,0,0, 16,16,16,15,15,15,14,14, 20,20,20,19,19,18,18,18, 24,24,24,23,23,23,22,22, 28,28,28,27,27,26,26,25, 30,30,29,29,28,28,27,26, 40,40,40,40,40,38,38,38, 56,56,56,56,54,53,52,50,},
+    {2,1,0,0,0,0,0,0, 16,16,16,15,15,15,14,14, 20,20,20,19,19,18,18,18, 24,24,24,23,23,23,22,22, 28,28,28,27,27,26,26,25, 30,30,29,29,28,28,27,26, 40,40,40,40,40,38,38,38, 56,56,56,56,54,53,52,52,},
+    {2,2,1,1,0,0,0,0, 20,20,20,19,19,18,18,18, 24,24,24,23,23,23,22,22, 26,26,26,25,25,24,24,24, 30,30,30,29,29,29,28,28, 34,34,34,33,33,32,32,31, 42,42,42,42,42,40,40,40, 56,56,56,56,55,53,53,53,},
+    {2,2,1,1,0,0,0,0, 20,20,20,19,19,18,18,18, 24,24,24,23,23,23,22,22, 26,26,26,25,25,24,24,24, 36,36,36,34,34,32,32,30, 40,40,40,39,39,38,38,38, 46,46,44,42,42,42,40,40, 58,58,58,58,58,56,54,54,},
+    {4,3,2,1,1,0,0,0, 26,26,26,25,25,24,24,24, 30,30,30,29,29,29,28,28, 36,36,36,34,34,32,32,30, 40,40,40,39,39,38,38,37, 42,42,42,40,40,39,38,38, 48,48,46,45,45,44,43,42, 60,60,60,59,59,58,56,56,},
+    {12,10,8,6,6,0,0,0, 32,32,32,31,31,30,30,29, 38,38,38,37,37,36,36,35, 42,42,42,41,41,40,40,39, 46,45,44,43,40,40,40,40, 50,50,50,49,49,48,48,47, 56,56,56,55,55,54,54,53, 60,60,60,59,59,58,58,57,},
 };
 
 //aisp_tnr_t->tnr_mc_meta2alpha
 static uint8_t _CALIBRATION_MC_META2ALPHA[ISO_NUM_MAX][64] = {
-    {0,0,0,0,0,0,0,0, 8,7,6,5,5,5,5,5, 11,10,8,7,6,6,6,6, 13,11,11,10,10,8,7,7, 15,13,12,11,10,8,8,8,17, 15,14,13,11,10,10,10, 17,17,15,14,13,12,11,11, 17,17,17,16,15,14,13,12,},
-    {0,0,0,0,0,0,0,0, 8,7,6,5,5,5,5,5, 11,10,8,7,6,6,6,6, 13,11,11,10,10,8,7,7, 15,13,12,11,10,8,8,8,17, 15,14,13,11,10,10,10, 17,17,15,14,13,12,11,11, 17,17,17,16,15,14,13,12,},
-    {0,0,0,0,0,0,0,0, 8,7,6,5,5,5,5,5, 11,10,8,7,6,6,6,6, 13,11,11,10,10,8,7,7, 15,13,12,11,10,8,8,8,17, 15,14,13,11,10,10,10, 17,17,15,14,13,12,11,11, 17,17,17,16,15,14,13,12,},
-    {0,0,0,0,0,0,0,0, 8,7,6,5,5,5,5,5, 11,10,8,7,6,6,6,6, 13,11,11,10,10,8,7,7, 15,13,12,11,10,8,8,8,17, 15,14,13,11,10,10,10, 17,17,15,14,13,12,11,11, 17,17,17,16,15,14,13,12,},
-    {0,0,0,0,0,0,0,0, 8,7,6,5,5,5,5,5, 11,10,8,7,6,6,6,6, 13,11,11,10,10,8,7,7, 15,13,12,11,10,8,8,8,17, 15,14,13,11,10,10,10, 17,17,15,14,13,12,11,11, 17,17,17,16,15,14,13,12,},
-    {0,0,0,0,0,0,0,0, 8,7,6,5,5,5,5,5, 11,10,8,7,6,6,6,6, 13,11,11,10,10,8,7,7, 15,13,12,11,10,8,8,8,17, 15,14,13,11,10,10,10, 17,17,15,14,13,12,11,11, 17,17,17,16,15,14,13,12,},
-    {0,0,0,0,0,0,0,0, 8,7,6,5,5,5,5,5, 11,10,8,7,6,6,6,6, 13,11,11,10,10,8,7,7, 15,13,12,11,10,8,8,8,17, 15,14,13,11,10,10,10, 17,17,15,14,13,12,11,11, 17,17,17,16,15,14,13,12,},
-    {0,0,0,0,0,0,0,0, 8,7,6,5,5,5,5,5, 11,10,8,7,6,6,6,6, 13,11,11,10,10,8,7,7, 15,13,12,11,10,8,8,8,17, 15,14,13,11,10,10,10, 17,17,15,14,13,12,11,11, 17,17,17,16,15,14,13,12,},
-    {0,0,0,0,0,0,0,0, 8,7,6,5,5,5,5,5, 11,10,8,7,6,6,6,6, 13,11,11,10,10,8,7,7, 15,13,12,11,10,8,8,8,17, 15,14,13,11,10,10,10, 17,17,15,14,13,12,11,11, 17,17,17,16,15,14,13,12,},
-    {0,0,0,0,0,0,0,0, 8,7,6,5,5,5,5,5, 11,10,8,7,6,6,6,6, 13,11,11,10,10,8,7,7, 15,13,12,11,10,8,8,8,17, 15,14,13,11,10,10,10, 17,17,15,14,13,12,11,11, 17,17,17,16,15,14,13,12,},
+    {0,0,0,0,0,0,0,0, 5,5,5,5,5,3,3,3, 8,8,8,6,6,6,6,6, 10,10,8,8,8,8,6,6, 12,11,10,9,9,9,8,8, 14,12,10,9,9,9,9,9, 16,14,12,11,11,11,11,11, 16,16,14,13,13,12,12,12,},
+    {0,0,0,0,0,0,0,0, 5,5,5,5,5,3,3,3, 8,8,8,6,6,6,6,6, 10,10,8,8,8,8,6,6, 12,11,10,9,9,9,8,8, 14,12,10,9,9,9,9,9, 16,14,12,11,11,11,11,11, 16,16,14,13,13,12,12,12,},
+    {0,0,0,0,0,0,0,0, 5,5,5,5,5,3,3,3, 8,8,8,6,6,6,6,6, 10,10,8,8,8,8,6,6, 12,11,10,9,9,9,8,8, 14,12,10,9,9,9,9,9, 16,14,12,11,11,11,11,11, 16,16,14,13,13,12,12,12,},
+    {0,0,0,0,0,0,0,0, 5,5,5,5,5,3,3,3, 8,8,8,6,6,6,6,6, 10,10,8,8,8,8,6,6, 12,11,10,9,9,9,8,8, 14,12,10,9,9,9,9,9, 16,14,12,11,11,11,11,11, 16,16,14,13,13,12,12,12,},
+    {0,0,0,0,0,0,0,0, 5,5,5,5,5,3,3,3, 8,8,8,6,6,6,6,6, 10,10,8,8,8,8,6,6, 12,11,10,9,9,9,8,8, 14,12,10,9,9,9,9,9, 16,14,12,11,11,11,11,11, 16,16,14,13,13,12,12,12,},
+    {0,0,0,0,0,0,0,0, 5,5,5,5,5,3,3,3, 8,8,8,6,6,6,6,6, 10,10,8,8,8,8,6,6, 12,11,10,9,9,9,8,8, 14,12,10,9,9,9,9,9, 16,14,12,11,11,11,11,11, 16,16,14,13,13,12,12,12,},
+    {0,0,0,0,0,0,0,0, 5,5,5,5,5,3,3,3, 8,8,8,6,6,6,6,6, 10,10,8,8,8,8,6,6, 12,11,10,9,9,9,8,8, 14,12,10,9,9,9,9,9, 16,14,12,11,11,11,11,11, 16,16,14,13,13,12,12,12,},
+    {0,0,0,0,0,0,0,0, 5,5,5,5,5,3,3,3, 8,8,8,6,6,6,6,6, 10,10,8,8,8,8,6,6, 12,11,10,9,9,9,8,8, 14,12,10,9,9,9,9,9, 16,14,12,11,11,11,11,11, 16,16,14,13,13,12,12,12,},
+    {0,0,0,0,0,0,0,0, 5,5,5,5,5,3,3,3, 8,8,8,6,6,6,6,6, 10,10,8,8,8,8,6,6, 12,11,10,9,9,9,8,8, 14,12,10,9,9,9,9,9, 16,14,12,11,11,11,11,11, 16,16,14,13,13,12,12,12,},
+    {0,0,0,0,0,0,0,0, 5,5,5,5,5,3,3,3, 8,8,8,6,6,6,6,6, 10,10,8,8,8,8,6,6, 12,11,10,9,9,9,8,8, 14,12,10,9,9,9,9,9, 16,14,12,11,11,11,11,11, 16,16,14,13,13,12,12,12,},
 };
 
 //aisp_tnr_t->ptnr_alp_lut
 static uint8_t _CALIBRATION_PST_TNR_ALP_LUT[ISO_NUM_MAX][8] = {
-    {0,2,8,16,24,32,36,46,},
-    {0,2,8,16,24,32,36,48,},
-    {0,2,8,16,24,32,36,50,},
-    {0,2,8,16,24,32,36,50,},
-    {0,2,8,16,24,32,36,50,},
-    {0,2,8,16,24,32,36,50,},
-    {0,2,8,16,24,32,36,60,},
-    {0,2,8,16,24,32,36,60,},
-    {0,2,8,16,24,32,36,60,},
-    {0,2,8,16,24,32,36,60,},
+    {0,2,4,12,18,22,26,28,},
+    {0,2,4,12,18,24,26,32,},
+    {0,2,6,14,22,26,28,32,},
+    {0,2,6,14,22,28,32,34,},
+    {0,2,8,16,24,28,32,36,},
+    {0,2,8,16,24,28,36,40,},
+    {0,2,8,16,24,32,36,45,},
+    {0,2,8,16,24,34,38,50,},
+    {0,2,8,16,24,36,40,55,},
+    {0,2,8,16,24,36,42,60,},
 };
 
 static uint32_t _CALIBRATION_COMPRESS_RATIO[2] =
@@ -785,10 +827,10 @@ static uint32_t _CALIBRATION_COMPRESS_RATIO[2] =
 //aisp_lsc_adj_t
 static uint16_t _CALIBRATION_LENS_SHADING_ADJ[ISO_NUM_MAX][2] = {
 /* radial shding strength  | mesh shding strength*/
-    {128, 128,}, //x1 gain
-    {128, 128,}, //x2 gain
-    {128, 128,}, //x4 gain
-    {128, 128,}, //x8 gain
+    {256, 256,}, //x1 gain
+    {256, 256,}, //x2 gain
+    {256, 256,}, //x4 gain
+    {256, 256,}, //x8 gain
     {128, 128,}, //x16 gain
     {64,   64,}, //x32 gain
     {64,   64,}, //x64 gain
@@ -859,9 +901,9 @@ static uint32_t _CALIBRATION_CCM_ADJ[ISO_NUM_MAX][1] = {
     {128,}, //x2 gain
     {128,}, //x4 gain
     {128,}, //x8 gain
-    {128,}, //x16 gain
-    {128,}, //x32 gain
-    {110,}, //x64 gain
+    {110,}, //x16 gain
+    {110,}, //x32 gain
+    {100,}, //x64 gain
     {80,}, //x128 gain
     {80,}, //x256 gain
     {80,}, //x512 gain
@@ -880,16 +922,16 @@ static int32_t _CALIBRATION_CNR_CTL[6] = {
 //aisp_cnr_adj_t
 static uint16_t _CALIBRATION_CNR_ADJ[ISO_NUM_MAX][6] = {
 /*cnr_weight|umargin_up|umargin_dw|vmargin_up|vmargin_dw| alp_mode*/
-    {48,    16,    16,    16,    16,    2,},
-    {48,    16,    16,    16,    16,    2,},
-    {48,    16,    16,    16,    16,    2,},
-    {48,    16,    16,    16,    16,    2,},
-    {48,    16,    16,    16,    16,    2,},
-    {48,    16,    16,    16,    16,    2,},
-    {48,    16,    16,    16,    16,    2,},
-    {48,    16,    16,    16,    16,    2,},
-    {48,    16,    16,    16,    16,    2,},
-    {48,    16,    16,    16,    16,    2,},
+    {48,    64,    64,    64,    64,    2,},
+    {48,    64,    64,    64,    64,    2,},
+    {48,    64,    64,    64,    64,    2,},
+    {48,    64,    64,    64,    64,    2,},
+    {48,    64,    64,    64,    64,    2,},
+    {48,    64,    64,    64,    64,    2,},
+    {48,    64,    64,    64,    64,    2,},
+    {48,    64,    64,    64,    64,    2,},
+    {48,    64,    64,    64,    64,    2,},
+    {48,    64,    64,    64,    64,    2,},
 };
 
 //aisp_purple_ctl_t
@@ -903,16 +945,16 @@ static int32_t _CALIBRATION_PURPLE_CTL[4] = {
 //aisp_purple_adj_t
 static uint16_t _CALIBRATION_PURPLE_ADJ[ISO_NUM_MAX][7] = {
 /*purple_weight|purple_umargin_up|purple_umargin_dw|purple_vmargin_up|purple_vmargin_dw| purple_cst_thd|purple_desat_en|*/
-    {64,    16,    16,    16,    16,    5,    2,},
-    {64,    16,    16,    16,    16,    5,    2,},
-    {64,    16,    16,    16,    16,    5,    2,},
-    {64,    16,    16,    16,    16,    5,    2,},
-    {64,    16,    16,    16,    16,    5,    2,},
-    {64,    16,    16,    16,    16,    5,    2,},
-    {64,    16,    16,    16,    16,    5,    2,},
-    {64,    16,    16,    16,    16,    5,    2,},
-    {64,    16,    16,    16,    16,    5,    2,},
-    {64,    16,    16,    16,    16,    5,    2,},
+    {64,    64,    64,    64,    64,    5,    2,},
+    {64,    64,    64,    64,    64,    5,    2,},
+    {64,    64,    64,    64,    64,    5,    2,},
+    {64,    64,    64,    64,    64,    5,    2,},
+    {64,    64,    64,    64,    64,    5,    2,},
+    {64,    64,    64,    64,    64,    5,    2,},
+    {64,    64,    64,    64,    64,    5,    2,},
+    {64,    64,    64,    64,    64,    5,    2,},
+    {64,    64,    64,    64,    64,    5,    2,},
+    {64,    64,    64,    64,    64,    5,    2,},
 };
 
 //aisp_ltm_t
@@ -935,45 +977,45 @@ static int32_t _CALIBRATION_LTM_CTL[14] = {
 
 static int32_t _CALIBRATION_LTM_LO_HI_GM[ISO_NUM_MAX][2] = {
 /* ltm_lo_gm_u6 | ltm_hi_gm_u7 */
-    {25, 64,},
-    {25, 64,},
-    {25, 64,},
-    {25, 64,},
-    {25, 64,},
-    {25, 64,},
-    {25, 64,},
-    {25, 64,},
-    {25, 64,},
-    {25, 64,},
+    {27, 64,},
+    {27, 64,},
+    {27, 64,},
+    {27, 64,},
+    {27, 64,},
+    {27, 64,},
+    {27, 64,},
+    {27, 64,},
+    {27, 64,},
+    {27, 64,},
 };
 
 static int32_t _CALIBRATION_LTM_CONTRAST[ISO_NUM_MAX] = {
 /* u9, only for WDR mode*/
-    344,
     400,
     400,
     400,
     400,
-    428,
-    428,
-    456,
-    456,
-    484,
+    400,
+    400,
+    400,
+    400,
+    400,
+    400,
 };
 
 //aisp_sharpen_ltm_t
 static int32_t _CALIBRATION_LTM_SHARP_ADJ[ISO_NUM_MAX][4] = {
 /* alpha | shrp_r_u6 | shrp_s_u8 | shrp_smth_lvlsft */
-    {32,    16,    128,     7,},
-    {24,    16,    96,      7,},
-    {24,    16,    64,      7,},
-    {20,    16,    32,      7,},
-    {16,    16,    32,      7,},
-    {16,    16,    24,      7,},
-    { 8,    16,     8,      7,},
-    { 8,    16,     8,      7,},
-    { 8,    16,     8,      7,},
-    { 8,    16,     8,      7,},
+    {12,    12,    14,     7,},
+    {12,    12,    14,      7,},
+    {12,    12,    14,      7,},
+    {12,    12,    14,      7,},
+    {12,    12,    12,      7,},
+    {10,    10,    10,      7,},
+    { 8,    10,     8,      7,},
+    { 8,    10,     8,      7,},
+    { 8,    10,     8,      7,},
+    { 8,    10,     8,      7,},
 };
 
 static uint16_t _CALIBRATION_LTM_SATUR_LUT[63] = {
@@ -984,35 +1026,37 @@ static uint16_t _CALIBRATION_LTM_SATUR_LUT[63] = {
 };
 
 //aisp_lc_t
-static int32_t _CALIBRATION_LC_CTL[14] = {
+static int32_t _CALIBRATION_LC_CTL[16] = {
     1,  //lc_auto_enable
     1, //lc_blkblend_mode
     6, //lc_lmtrat_minmax
-    96, //lc_contrast_low u8
-    48, //lc_contrast_hig u8
+    128, //lc_contrast_low u8
+    256, //lc_contrast_hig u8
     0,  //lc_cc_en
     48,  //lc_ypkbv_slope_lmt[1]
     48,  //lc_ypkbv_slope_lmt[0]
     0,  //lc_str_fixed
     2,  //lc_damper64
     63, //lc_nodes_alpha;
+    64, //lc_final_gain
     90, //u7, lc_single_bin_th, 0-100
     0,  //lc_single_bin_prot_en
     16, //u7, lc_single_bin_prot_strgth, 0 is strongest protection, 64 is without protection, max is 64
+    0,  //u7, lc_ymaxv_lmt, limit the height of ymaxV from y=x, max is 64, 0: unrestricted; 64: ymaxV = maxV
 };
 
 static int32_t _CALIBRATION_LC_STRENGTH[ISO_NUM_MAX][2] = {
 /* lc_ypkbv_slope_lmt_0, lc_ypkbv_slope_lmt_1 */
-    {32, 96,},
-    {32, 96,},
-    {32, 96,},
-    {32, 96,},
-    {32, 96,},
-    {32, 96,},
-    {32, 96,},
-    {32, 96,},
-    {32, 96,},
-    {32, 96,},
+    {32, 32,},
+    {32, 32,},
+    {32, 32,},
+    {32, 32,},
+    {32, 32,},
+    {32, 32,},
+    {32, 32,},
+    {32, 32,},
+    {32, 32,},
+    {32, 32,},
 };
 
 static uint16_t _CALIBRATION_LC_SATUR_LUT[63] = {
@@ -1032,24 +1076,24 @@ static int32_t _CALIBRATION_DNLP_CTL[24] = {
     6,   // dnlp_blkext_ofst
     10,  // dnlp_whtext_ofst
     32,  // dnlp_blkext_rate
-    64,  // dnlp_whtext_rate
+    63,  // dnlp_whtext_rate
     1,   // dnlp_dbg_map
     12,  // dnlp_final_gain
-    20<<4,  // dnlp_scurv_low_th
-    80<<4,  // dnlp_scurv_mid1_th
-    120<<4, // dnlp_scurv_mid2_th
-    160<<4, // dnlp_scurv_hgh1_th
-    200<<4, // dnlp_scurv_hgh2_th
+    12,  // dnlp_scurv_low_th
+    32,  // dnlp_scurv_mid1_th
+    64, // dnlp_scurv_mid2_th
+    128, // dnlp_scurv_hgh1_th
+    256, // dnlp_scurv_hgh2_th
     0,   // dnlp_mtdrate_adp_en
     1,   // dnlp_ble_en
     48,  // dnlp_scn_chg_th
-    60, // dnlp_mtdbld_rate
+    64, // dnlp_mtdbld_rate
     0,  //dnlp_str_fixed
     //if dnlp_by_iso_luma 0: luma_avg, so dnlp_scurv_low_th/dnlp_scurv_mid1_th/dnlp_scurv_mid2_th/dnlp_scurv_hgh1_th/dnlp_scurv_hgh2_th range is [0 - 255<<4].
     // If dnlp_by_iso_luma 1: iso, so dnlp_scurv_low_th/dnlp_scurv_mid1_th/dnlp_scurv_mid2_th/dnlp_scurv_hgh1_th/dnlp_scurv_hgh2_th range is [0 - 1024].
     // ISO100: 8; ISO200: 16; ISO400: 32; ISO800: 64; ISO1600: 128; ISO3200: 256; ISO6400: 512; ISO12800: 1024
-    0,  //dnlp_by_iso_luma 1: iso 0: luma_avg
-    1,  //dnlp_scurv_gain_mode
+    1,  //dnlp_by_iso_luma 1: iso 0: luma_avg
+    0,  //dnlp_scurv_gain_mode
     0,  //dnlp_luma_dbg
 };
 
@@ -1057,33 +1101,23 @@ static int32_t _CALIBRATION_DNLP_CTL[24] = {
 static int32_t _CALIBRATION_DNLP_STRENGTH[ISO_NUM_MAX] = {8, 8, 8, 8, 8, 8, 8, 8, 8, 8};
 
 static uint16_t _CALIBRATION_DNLP_SCURV_LOW[65] = {
-    0, 13, 27, 41, 55, 69, 84, 99, 114, 129, 145, 162, 179, 197, 215, 233, 252, 272, 291, 310, 329,
-    348, 367, 386, 405, 424, 442, 461, 479, 497, 515, 533, 550, 567, 584, 601, 617, 633, 650, 665,
-    681, 697, 712, 727, 742, 757, 772, 787, 801, 816, 830, 844, 858, 872, 886, 900, 914, 927, 941, 955, 968, 982, 995, 1009, 1023
+    0,11,23,34,46,58,70,83,95,108,121,135,149,164,178,194,210,226,244,262,280,300,320,341,362,385,408,431,453,474,495,514,533,552,569,587,604,620,636,653,668,684,700,715,731,746,761,776,791,806,821,836,850,865,879,894,908,923,937,951,966,980,994,1008,1023
 };
 
 static uint16_t _CALIBRATION_DNLP_SCURV_MID1[65] = {
-    0, 13, 26, 39, 52, 65, 79, 93, 107, 121, 136, 150, 166, 181, 197, 214, 231, 249, 267, 286, 305,
-    325, 346, 368, 390, 408, 426, 444, 462, 480, 498, 516, 534, 551, 569, 586, 602, 619, 636, 652,
-    668, 684, 700, 716, 731, 747, 762, 777, 792, 807, 822, 837, 851, 866, 880, 895, 909, 923, 938, 952, 966, 980, 994, 1008, 1023
+    0,11,23,34,46,58,70,83,95,108,121,135,149,164,178,194,210,226,244,262,280,300,320,341,362,385,408,431,453,474,495,514,533,552,569,587,604,620,636,653,668,684,700,715,731,746,761,776,791,806,821,836,850,865,879,894,908,923,937,951,966,980,994,1008,1023
 };
 
 static uint16_t _CALIBRATION_DNLP_SCURV_MID2[65] = {
-    0, 11, 23, 34, 46, 58, 70, 83, 95, 108, 121, 135, 149, 164, 178, 194, 210, 226, 244, 262, 280,
-    300, 320, 341, 362, 385, 408, 431, 454, 472, 490, 508, 525, 543, 560, 578, 595, 611, 628, 645,
-    661, 677, 693, 709, 725, 740, 756, 771, 787, 802, 817, 832, 847, 862, 877, 892, 906, 921, 935, 950, 965, 979, 994, 1008, 1023
+    0,11,23,34,46,58,70,83,95,108,121,135,149,164,178,194,210,226,244,262,280,300,320,341,362,385,408,431,453,474,495,514,533,552,569,587,604,620,636,653,668,684,700,715,731,746,761,776,791,806,821,836,850,865,879,894,908,923,937,951,966,980,994,1008,1023
 };
 
 static uint16_t _CALIBRATION_DNLP_SCURV_HGH1[65] = {
-    0, 9, 18, 28, 37, 47, 57, 68, 78, 90, 102, 114, 127, 140, 155, 170, 185, 202, 220, 238, 256,
-    275, 293, 312, 331, 349, 368, 387, 405, 423, 442, 460, 478, 496, 514, 532, 549, 567, 585, 602,
-    619, 637, 654, 671, 688, 705, 723, 739, 756, 773, 790, 807, 824, 840, 857, 874, 890, 907, 923, 940, 956, 973, 989, 1006, 1023
+    0,11,23,34,46,58,70,83,95,108,121,135,149,164,178,194,210,226,244,262,280,300,320,341,362,385,408,431,453,474,495,514,533,552,569,587,604,620,636,653,668,684,700,715,731,746,761,776,791,806,821,836,850,865,879,894,908,923,937,951,966,980,994,1008,1023
 };
 
 static uint16_t _CALIBRATION_DNLP_SCURV_HGH2[65] = {
-    0, 7, 14, 21, 29, 37, 45, 54, 64, 74, 85, 97, 110, 123, 138, 154, 172, 191, 210, 229, 245, 262,
-    279, 297, 316, 334, 352, 370, 388, 406, 424, 442, 460, 478, 496, 514, 531, 549, 567, 585, 602,
-    620, 638, 655, 673, 691, 708, 726, 743, 761, 778, 796, 813, 831, 848, 866, 883, 901, 918, 935, 953, 970, 988, 1005, 1023
+    0,11,23,34,46,58,70,83,95,108,121,135,149,164,178,194,210,226,244,262,280,300,320,341,362,385,408,431,453,474,495,514,533,552,569,587,604,620,636,653,668,684,700,715,731,746,761,776,791,806,821,836,850,865,879,894,908,923,937,951,966,980,994,1008,1023
 };
 
 //aisp_dhz_t
@@ -1106,23 +1140,23 @@ static int32_t _CALIBRATION_DHZ_STRENGTH[ISO_NUM_MAX] = {1024, 1024, 1024, 1024,
 //aisp_sharpen_ctl_t
 static int32_t _CALIBRATION_PEAKING_CTL[54] = {
     //pk_flt1_v1d[3]
-    120, -60, 0,
+    110, 8, -63,
     //pk_flt2_v1d[3]
-    120, -60, 0,
+    126, -63, 0,
     //pk_flt1_h1d[5]
-    120, -60, 0, 0, 0,
+    94, 18, -44, -18, -3,
     //pk_flt2_h1d[5]
-    120, -60, 0, 0, 0,
+    122, -55, -7, 2, -1,
     //pkosht_vsluma_lut[9]
-    4, 4, 3, 3, 3, 3, 2, 1, 0,
+    2, 4, 5, 5, 5, 5, 5, 4, 2,
     //pk_flt1_2d[3][4]
-    124,    70,     -29,    0,
-    70,     -37,    -16,    0,
-    -29,    -16,    -3,     0,
+    72,    13,     -9,    -2,
+    13,     -5,    -7,    0,
+    -9,    -7,    -2,     0,
     //pk_flt2_2d[3][4]
-    124,    70,     -29,    0,
-    70,     -37,    -16,    0,
-    -29,    -16,    -3,     0,
+    72,    13,     -9,    -2,
+    13,     -5,    -7,    0,
+    -9,    -7,    -2,     0,
     /*124,    -11,     -5,    0,
     -11,     -11,    -2,    0,
     -5,    -2,    0,     0,*/
@@ -1136,130 +1170,131 @@ static int32_t _CALIBRATION_PEAKING_CTL[54] = {
 //aisp_sharpen_adj_t
 static uint16_t _CALIBRATION_PEAKING_ADJUST[ISO_NUM_MAX][6] = {
 /*flt1_final_gain|flt2_final_gain|pre_flt_str|os_up|os_dw|pre_flt_range*/
-    {40,    40,    12,    80,    120,    64,},
-    {40,    40,    16,    80,    120,    32,},
-    {40,    40,    20,    80,    120,    24,},
-    {32,    32,    24,    80,    120,    20,},
-    {32,    32,    32,    80,    120,    12,},
-    {32,    32,    40,    50,    100,    4,},
-    {16,    16,    48,    40,    70,     0,},
-    {16,    16,    54,    40,    60,     0,},
-    {16,    16,    60,    10,    30,     0,},
-    {16,    16,    60,    10,    30,     0,},
+    {40,    40,    10,    100,    100,    72,},
+    {40,    40,    14,    100,    100,    64,},
+    {40,    40,    18,    100,    100,    32,},
+    {32,    32,    20,    100,    100,    22,},
+    {32,    32,    24,    100,    100,    14,},
+    {32,    32,    30,    100,    100,    8,},
+    {16,    16,    40,    100,    100,     0,},
+    {16,    16,    54,    100,    100,     0,},
+    {16,    16,    60,    100,    100,     0,},
+    {16,    16,    60,    100,    100,     0,},
 };
 
 //aisp_sharpen_t->peaking_flt1_gain_adp_motion
 static uint8_t _CALIBRATION_PEAKING_FLT1_MOTION_ADP_GAIN[ISO_NUM_MAX][8] = {
-    {22, 42, 42, 42, 42, 42, 42, 42,},
-    {22, 42, 42, 42, 42, 42, 42, 42,},
-    {18, 36, 42, 42, 42, 42, 42, 42,},
-    {14, 28, 36, 42, 42, 42, 42, 42,},
-    {12, 26, 30, 36, 42, 42, 42, 42,},
-    {10, 24, 26, 28, 32, 36, 36, 36,},
-    {8, 22, 24, 26, 26, 26, 26, 32,},
-    {8, 20, 22, 22, 22, 22, 22, 22,},
-    {8, 15, 18, 18, 18, 18, 18, 18,},
+    {16, 18, 18, 20, 22, 25, 28, 30,},
+    {16, 18, 18, 20, 22, 25, 28, 30,},
+    {11, 12, 14, 16, 18, 24, 27, 27,},
+    {10, 12, 14, 16, 18, 22, 24, 24,},
+    {10, 12, 14, 16, 18, 20, 22, 22,},
+    {10, 12, 14, 16, 18, 20, 22, 22,},
+    {10, 12, 14, 16, 18, 20, 22, 22,},
+    {10, 12, 14, 16, 18, 20, 22, 22,},
+    {10, 12, 14, 16, 18, 20, 22, 22,},
     {8, 10, 10, 10, 10, 10, 10, 10,},
 };
 
 //aisp_sharpen_t->peaking_flt2_gain_adp_motion
 static uint8_t _CALIBRATION_PEAKING_FLT2_MOTION_ADP_GAIN[ISO_NUM_MAX][8] = {
-    {22, 42, 42, 42, 42, 42, 42, 42,},
-    {22, 42, 42, 42, 42, 42, 42, 42,},
-    {18, 36, 42, 42, 42, 42, 42, 42,},
-    {14, 28, 36, 42, 42, 42, 42, 42,},
-    {12, 26, 30, 36, 42, 42, 42, 42,},
-    {10, 24, 26, 28, 32, 36, 36, 36,},
-    {8, 22, 24, 26, 26, 26, 26, 32,},
-    {8, 20, 22, 22, 22, 22, 22, 22,},
-    {8, 15, 18, 18, 18, 18, 18, 18,},
+    {16, 18, 18, 20, 22, 25, 28, 30,},
+    {16, 18, 18, 20, 22, 25, 28, 30,},
+    {11, 12, 14, 16, 18, 24, 27, 27,},
+    {10, 12, 14, 16, 18, 22, 24, 24,},
+    {10, 12, 14, 16, 18, 20, 22, 22,},
+    {10, 12, 14, 16, 18, 20, 22, 22,},
+    {10, 12, 14, 16, 18, 20, 22, 22,},
+    {10, 12, 14, 16, 18, 20, 22, 22,},
+    {10, 12, 14, 16, 18, 20, 22, 22,},
     {8, 10, 10, 10, 10, 10, 10, 10,},
 };
 
 //aisp_sharpen_t->peaking_gain_adp_luma
 static uint8_t _CALIBRATION_PEAKING_GAIN_VS_LUMA_LUT[ISO_NUM_MAX][9] = {
-    {4, 4, 4, 5, 5, 5, 5, 4, 3,},
-    {4, 4, 4, 4, 5, 5, 4, 4, 3,},
-    {3, 3, 4, 4, 4, 5, 4, 4, 2,},
-    {3, 3, 4, 4, 4, 4, 4, 4, 2,},
-    {2, 3, 4, 4, 4, 4, 4, 4, 2,},
-    {1, 3, 3, 4, 4, 4, 4, 3, 2,},
-    {0, 2, 3, 4, 4, 4, 4, 2, 2,},
-    {0, 1, 2, 4, 4, 4, 4, 2, 2,},
-    {0, 1, 2, 4, 4, 4, 4, 2, 2,},
-    {0, 1, 2, 4, 4, 4, 4, 2, 2,},
+    {4, 4, 5, 7, 9, 9, 7, 5, 4,},
+    {3, 3, 4, 6, 9, 9, 7, 5, 3,},
+    {3, 3, 4, 6, 8, 8, 6, 5, 3,},
+    {2, 3, 3, 5, 8, 8, 6, 5, 3,},
+    {2, 3, 3, 4, 7, 7, 6, 4, 3,},
+    {1, 2, 2, 3, 6, 6, 5, 4, 2,},
+    {0, 1, 2, 2, 5, 5, 5, 4, 2,},
+    {0, 1, 2, 2, 3, 5, 5, 4, 2,},
+    {0, 1, 2, 2, 3, 5, 5, 4, 2,},
+    {0, 1, 2, 2, 3, 5, 5, 4, 2,},
 };
 
 //aisp_sharpen_t->peaking_gain_adp_grad1
 static uint8_t _CALIBRATION_PEAKING_CIR_FLT1_GAIN[ISO_NUM_MAX][5] = {
-    {20, 65, 30, 17, 110,},
-    {20, 65, 30, 17, 110,},
-    {20, 65, 30, 17, 110,},
-    {20, 65, 30, 17, 110,},
-    {20, 65, 30, 17, 110,},
-    {20, 65, 30, 17, 110,},
-    {20, 65, 30, 17, 110,},
-    {20, 65, 30, 17, 110,},
-    {20, 65, 30, 17, 110,},
-    {20, 65, 30, 17, 110,},
+    {15, 120, 48, 14, 80,},
+    {15, 120, 48, 14, 80,},
+    {15, 120, 48, 14, 80,},
+    {15, 110, 48, 14, 80,},
+    {15, 100, 48, 14, 80,},
+    {15, 100, 48, 14, 80,},
+    {15, 96, 48, 14, 80,},
+    {15, 96, 48, 15, 80,},
+    {15, 96, 48, 15, 80,},
+    {15, 96, 48, 15, 80,},
 };
 
 //aisp_sharpen_t->peaking_gain_adp_grad2
 static uint8_t _CALIBRATION_PEAKING_CIR_FLT2_GAIN[ISO_NUM_MAX][5] = {
-    {20, 65, 30, 17, 110,},
-    {20, 65, 30, 17, 110,},
-    {20, 65, 30, 17, 110,},
-    {20, 65, 30, 17, 110,},
-    {20, 65, 30, 17, 110,},
-    {20, 65, 30, 17, 110,},
-    {20, 65, 30, 17, 110,},
-    {20, 65, 30, 17, 110,},
-    {20, 65, 30, 17, 110,},
-    {20, 65, 30, 17, 110,},
+    {15, 120, 48, 14, 80,},
+    {15, 120, 48, 14, 80,},
+    {15, 120, 48, 14, 80,},
+    {15, 110, 48, 14, 80,},
+    {15, 100, 48, 14, 80,},
+    {15, 100, 48, 14, 80,},
+    {15, 96, 48, 14, 80,},
+    {15, 96, 48, 15, 80,},
+    {15, 96, 48, 15, 80,},
+    {15, 96, 48, 15, 80,},
 };
 
 //aisp_sharpen_t->peaking_gain_adp_grad3
 static uint8_t _CALIBRATION_PEAKING_DRT_FLT1_GAIN[ISO_NUM_MAX][5] = {
-    {20, 100, 20, 15, 100,},
-    {20, 100, 20, 15, 100,},
-    {20, 100, 20, 15, 100,},
-    {20, 100, 20, 15, 100,},
-    {20, 100, 20, 15, 100,},
-    {20, 100, 20, 15, 100,},
-    {20, 100, 20, 15, 100,},
-    {20, 100, 20, 15, 100,},
-    {20, 100, 20, 15, 100,},
-    {20, 100, 20, 15, 100,},
+    {15, 100, 32, 14, 80,},
+    {15, 100, 32, 14, 80,},
+    {15, 100, 32, 14, 80,},
+    {15, 90, 32, 14, 80,},
+    {15, 80, 32, 14, 80,},
+    {15, 72, 32, 14, 80,},
+    {15, 66, 32, 14, 80,},
+    {15, 64, 32, 14, 80,},
+    {15, 64, 32, 14, 80,},
+    {15, 64, 32, 14, 80,},
+
 };
 
 //aisp_sharpen_t->peaking_gain_adp_grad4
 static uint8_t _CALIBRATION_PEAKING_DRT_FLT2_GAIN[ISO_NUM_MAX][5] = {
-    {20, 100, 20, 15, 100,},
-    {20, 100, 20, 15, 100,},
-    {20, 100, 20, 15, 100,},
-    {20, 100, 20, 15, 100,},
-    {20, 100, 20, 15, 100,},
-    {20, 100, 20, 15, 100,},
-    {20, 100, 20, 15, 100,},
-    {20, 100, 20, 15, 100,},
-    {20, 100, 20, 15, 100,},
-    {20, 100, 20, 15, 100,},
+    {15, 100, 32, 14, 80,},
+    {15, 100, 32, 14, 80,},
+    {15, 100, 32, 14, 80,},
+    {15, 90, 32, 14, 80,},
+    {15, 80, 32, 14, 80,},
+    {15, 72, 32, 14, 80,},
+    {15, 66, 32, 14, 80,},
+    {15, 64, 32, 14, 80,},
+    {15, 64, 32, 14, 80,},
+    {15, 64, 32, 14, 80,},
 };
 
 //aisp_cm_ctl_t
 static int32_t _CALIBRATION_CM_CTL[ISO_NUM_MAX][4] =
 {
 /* cm_sat | cm_hue | cm_contrast | cm_brightness */
-    {512,    0,    1100,    0},
-    {512,    0,    1100,    0},
-    {512,    0,    1100,    0},
-    {512,    0,    1100,    0},
-    {512,    0,    1100,    0},
-    {450,    0,    980,    0},
-    {420,    0,    980,    0},
-    {420,    0,    980,    0},
-    {420,    0,    950,    0},
-    {420,    0,    950,    0},
+    {512,    0,    1048,    0},
+    {512,    0,    1048,    0},
+    {512,    0,    1048,    0},
+    {512,    0,    1048,    0},
+    {512,    0,    1048,    0},
+    {512,    0,    1048,    0},
+    {512,    0,    1048,    0},
+    {512,    0,    1048,    0},
+    {512,    0,    1048,    0},
+    {512,    0,    1048,    0},
 };
 
 //aisp_cm_t->cm_y_via_hue
@@ -1327,143 +1362,148 @@ static int32_t _CALIBRATION_HLC_CTL[3] = {
     240,    //hlc_luma_trgt
 };
 
+//rgb2yuv_709f_u10[9] = {218, 732, 74, -118, -394,  512,  512, -465, -47};
+//rgb2yuv_601f_u10[9] = {306, 601, 117, -173, -339, 512, 512, -429, -83};
+static int32_t _CALIBRATION_CSC_COEF[9] = {306, 601, 117, -173, -339, 512, 512, -429, -83};
+
 static int32_t _CALIBRATION_BLACK_LEVEL[9][5] =
 {
-    {61504,61504,61504,61504,61504,},
-    {61376,61376,61392,61392,61376,},
-    {61360,61360,61360,61360,61360,},
-    {61248,61264,61248,61248,61248,},
-    {61296,61296,61296,61312,61296,},
-    {60976,60960,60960,60960,60976,},
-    {60816,60800,60800,60784,60816,},
-    {59392,59392,59328,59280,59392,},
-    {59216,59184,59056,59008,59216,},
+{65520,65520,65520,65520,65520,},
+{65504,65504,65504,65504,65504,},
+{65472,65472,65504,65504,65472,},
+{65472,65472,65520,65520,65472,},
+{65424,65424,65536,65536,65424,},
+{65424,65424,65536,65536,65424,},
+{65424,65424,65536,65536,65424,},
+{65424,65424,65536,65536,65424,},
+{65424,65424,65536,65536,65424,},
 };
 
 static uint16_t _CALIBRATION_SHADING_RADIAL_R[129]=
 {
-4096,4104,4096,4116,4111,4112,4111,4114,4126,4129,4126,4141,4142,4160,4158,
-4170,4179,4187,4202,4210,4224,4241,4244,4258,4272,4284,4299,4313,4328,4341,
-4361,4374,4389,4412,4426,4444,4466,4489,4510,4535,4559,4581,4606,4632,4655,
-4683,4708,4738,4763,4796,4819,4850,4882,4915,4947,4978,5011,5048,5083,5118,
-5157,5190,5233,5271,5307,5351,5387,5427,5473,5513,5554,5602,5642,5694,5743,
-5791,5844,5891,5946,5998,6058,6113,6169,6235,6279,6348,6407,6472,6537,6602,
-6675,6749,6835,6925,7010,7094,7177,7270,7367,7461,7547,7653,7750,7849,7949,
-8051,8175,8274,8376,8500,8621,8755,8849,8988,9134,9241,9374,9539,9684,9841,
-9971,10144,10335,10500,10690,10796,11041,11088,11311
+4096,4099,4096,4098,4097,4098,4100,4102,4103,4105,4106,4108,4111,4113,4115,
+4118,4121,4124,4127,4130,4134,4138,4141,4146,4150,4155,4160,4164,4170,4175,
+4180,4186,4191,4198,4204,4211,4218,4224,4231,4239,4246,4254,4262,4270,4279,
+4287,4296,4305,4314,4323,4333,4342,4351,4362,4374,4386,4397,4409,4422,4436,
+4450,4465,4480,4496,4514,4530,4549,4569,4590,4613,4637,4661,4686,4712,4739,
+4766,4795,4826,4856,4889,4921,4955,4990,5027,5064,5101,5141,5182,5224,5267,
+5311,5358,5405,5454,5505,5558,5611,5668,5726,5787,5852,5919,5989,6064,6142,
+6223,6309,6395,6486,6564,6662,6769,6882,7005,7143,7293,7461,7635,7816,7983,
+8155,8335,8567,8835,9111,9466,9980,10869,11261
 };
 
 static uint16_t _CALIBRATION_SHADING_RADIAL_G[129]=
 {
-4096,4096,4112,4101,4111,4112,4115,4119,4121,4131,4136,4140,4146,4153,4163,
-4173,4179,4189,4196,4207,4220,4231,4239,4250,4262,4276,4288,4302,4315,4330,
-4345,4360,4378,4390,4408,4426,4447,4467,4484,4506,4528,4546,4570,4593,4618,
-4644,4667,4693,4718,4746,4773,4802,4829,4857,4885,4918,4948,4981,5012,5046,
-5081,5116,5148,5185,5222,5258,5294,5335,5373,5410,5452,5488,5533,5574,5617,
-5665,5712,5760,5808,5856,5907,5960,6008,6064,6117,6175,6230,6286,6346,6410,
-6467,6536,6615,6691,6775,6855,6929,7008,7091,7180,7262,7344,7434,7523,7617,
-7712,7807,7897,8003,8112,8211,8321,8421,8550,8659,8781,8901,9023,9162,9283,
-9422,9571,9716,9851,10014,10162,10328,10530,10647
+4096,4099,4096,4098,4097,4098,4100,4102,4103,4105,4106,4108,4111,4113,4115,
+4118,4121,4124,4127,4130,4134,4138,4141,4146,4150,4155,4160,4164,4170,4175,
+4180,4186,4191,4198,4204,4211,4218,4224,4231,4239,4246,4254,4262,4270,4279,
+4287,4296,4305,4314,4323,4333,4342,4351,4362,4374,4386,4397,4409,4422,4436,
+4450,4465,4480,4496,4514,4530,4549,4569,4590,4613,4637,4661,4686,4712,4739,
+4766,4795,4826,4856,4889,4921,4955,4990,5027,5064,5101,5141,5182,5224,5267,
+5311,5358,5405,5454,5505,5558,5611,5668,5726,5787,5852,5919,5989,6064,6142,
+6223,6309,6395,6486,6564,6662,6769,6882,7005,7143,7293,7461,7635,7816,7983,
+8155,8335,8567,8835,9111,9466,9980,10869,11261
 };
 
 static uint16_t _CALIBRATION_SHADING_RADIAL_B[129]=
 {
-4096,4096,4119,4111,4098,4104,4104,4114,4122,4120,4133,4143,4144,4140,4151,
-4157,4171,4180,4188,4207,4200,4218,4228,4236,4254,4258,4276,4287,4305,4321,
-4330,4349,4358,4376,4395,4417,4440,4455,4474,4494,4516,4537,4559,4578,4600,
-4623,4649,4679,4699,4734,4754,4788,4810,4832,4867,4897,4926,4956,4989,5018,
-5051,5096,5123,5151,5185,5227,5260,5300,5334,5378,5409,5451,5491,5528,5577,
-5616,5665,5710,5758,5799,5854,5906,5954,6010,6055,6115,6166,6220,6280,6336,
-6393,6452,6529,6616,6686,6762,6832,6917,6994,7074,7153,7236,7317,7406,7493,
-7584,7678,7778,7870,7972,8073,8167,8280,8381,8499,8603,8723,8824,8955,9082,
-9215,9362,9513,9621,9828,9927,10056,10213,10340
+4096,4099,4096,4098,4097,4098,4100,4102,4103,4105,4106,4108,4111,4113,4115,
+4118,4121,4124,4127,4130,4134,4138,4141,4146,4150,4155,4160,4164,4170,4175,
+4180,4186,4191,4198,4204,4211,4218,4224,4231,4239,4246,4254,4262,4270,4279,
+4287,4296,4305,4314,4323,4333,4342,4351,4362,4374,4386,4397,4409,4422,4436,
+4450,4465,4480,4496,4514,4530,4549,4569,4590,4613,4637,4661,4686,4712,4739,
+4766,4795,4826,4856,4889,4921,4955,4990,5027,5064,5101,5141,5182,5224,5267,
+5311,5358,5405,5454,5505,5558,5611,5668,5726,5787,5852,5919,5989,6064,6142,
+6223,6309,6395,6486,6564,6662,6769,6882,7005,7143,7293,7461,7635,7816,7983,
+8155,8335,8567,8835,9111,9466,9980,10869,11261
 };
 
-static int32_t _CALIBRATION_LENS_OTP_CENTER_OFFSET[2] = {0, 0};
+//CALIBRATION_LENS_OTP_CENTER_OFFSET
+static int32_t _CALIBRATION_LENS_OTP_CENTER_OFFSET[2] = {-14,133};
 
 static uint8_t _CALIBRATION_SHADING_LS_D65_R[1024]=
 {
-160,144,132,122,114,107,101,96,91,88,86,83,82,80,80,80,79,80,79,81,83,85,87,90,94,99,104,110,118,127,139,153,155,141,128,119,111,104,99,94,90,86,84,82,80,79,78,77,77,77,78,80,81,83,86,89,93,96,102,108,115,124,135,149,150,136,125,116,108,102,97,92,88,85,82,79,78,76,76,75,76,76,76,77,80,81,83,86,90,95,100,106,112,121,131,144,146,133,122,113,106,101,95,90,86,83,80,78,76,75,74,74,74,74,75,76,77,80,82,85,89,92,97,103,109,118,128,140,142,130,119,110,104,98,93,88,84,81,79,76,75,73,72,73,73,73,73,74,75,78,80,83,86,90,96,101,107,115,125,137,140,128,117,109,102,96,91,86,83,79,77,75,73,72,72,71,71,71,72,73,75,76,79,82,85,89,93,99,106,112,123,134,138,124,114,107,100,94,90,85,81,78,76,74,72,71,70,69,69,69,70,72,73,75,77,80,83,87,92,98,103,111,120,131,135,123,113,105,99,93,88,83,80,77,75,72,71,69,69,69,69,69,69,70,72,74,76,79,83,86,91,96,103,109,118,129,134,121,111,103,97,92,86,83,79,76,74,72,70,69,68,67,67,68,69,69,71,73,76,78,81,85,89,95,101,108,116,126,131,120,110,103,96,91,86,82,78,75,72,71,69,68,67,66,66,67,68,69,70,73,74,77,80,84,89,93,99,106,115,125,130,118,109,102,96,90,85,81,77,74,72,70,69,67,66,66,66,66,67,68,69,72,73,76,79,83,88,93,99,106,114,123,129,117,107,100,94,89,84,80,76,74,71,69,68,66,66,66,66,66,66,67,69,71,73,75,79,82,87,92,98,104,112,122,128,117,107,100,93,88,83,79,76,73,71,69,67,67,66,65,65,65,66,67,69,70,72,75,79,82,86,91,97,103,112,121,127,116,107,100,94,88,83,80,76,73,70,69,67,66,65,64,64,65,66,66,68,70,73,75,78,82,86,91,96,103,111,121,127,115,106,99,94,87,82,80,76,72,70,68,66,66,65,64,64,64,66,66,68,69,72,75,78,82,87,91,96,102,111,120,126,115,106,100,94,87,83,79,76,72,70,68,66,66,65,64,64,64,66,66,68,69,72,75,78,81,86,90,95,102,110,120,126,115,106,99,93,87,82,79,76,72,70,68,66,66,65,64,64,64,65,66,68,69,72,74,78,81,86,90,96,102,110,119,127,116,106,100,94,88,83,79,76,72,70,69,66,66,65,64,64,64,66,66,68,69,72,75,78,81,86,90,96,102,110,120,128,116,107,100,93,88,83,80,76,73,70,69,67,66,65,65,64,65,66,66,68,70,72,75,78,82,86,91,96,103,111,120,128,117,107,100,94,89,84,79,76,73,71,69,67,67,66,65,65,65,66,66,69,70,72,75,78,82,86,91,97,103,111,121,129,118,107,101,95,90,84,80,76,74,71,69,68,66,66,66,65,66,66,67,69,70,72,75,79,83,87,92,97,103,112,121,130,119,109,101,96,90,85,81,77,74,72,70,69,67,66,66,66,67,67,68,69,71,73,76,79,83,87,92,98,104,113,123,131,120,110,103,97,91,86,82,78,75,72,71,70,68,67,66,66,66,67,69,70,72,74,77,80,83,88,93,99,105,114,125,133,121,111,104,97,92,86,83,79,76,73,72,70,69,68,67,67,68,69,69,71,72,75,78,81,85,89,95,100,107,115,126,135,123,113,105,99,93,88,84,80,77,75,72,71,70,69,68,69,69,69,70,72,74,76,79,82,85,90,95,102,109,117,128,138,125,115,107,100,95,89,85,81,78,76,74,72,71,70,69,69,69,70,72,73,75,77,80,83,87,92,97,103,110,119,130,140,127,118,109,102,97,91,86,83,80,77,75,73,72,71,71,70,71,72,72,74,76,79,81,85,89,93,98,105,112,121,132,143,130,120,110,104,98,93,88,84,81,78,76,75,73,72,72,72,73,73,74,76,77,80,82,85,90,95,100,106,114,124,135,146,133,122,114,107,100,94,89,86,83,79,78,76,75,74,73,73,74,74,75,77,79,81,84,88,92,96,102,109,116,126,138,150,136,125,116,108,102,97,92,87,85,82,80,78,76,75,75,75,75,75,77,79,80,83,85,89,93,98,104,111,119,129,141,155,141,128,119,111,104,99,94,89,86,84,82,79,79,77,76,76,77,78,79,80,83,85,88,92,95,101,107,113,122,133,146,160,144,133,122,114,106,101,96,92,88,86,83,82,80,79,78,78,79,79,81,83,85,86,89,93,98,103,109,116,125,138,151
+166,164,161,158,154,151,148,145,143,141,140,139,138,138,137,137,137,138,140,142,144,146,148,151,156,160,166,173,181,191,203,218,165,162,160,157,153,150,147,144,142,140,139,138,138,137,137,137,137,138,139,140,142,145,147,150,154,158,164,170,179,187,199,213,166,162,159,155,151,148,145,143,141,139,138,137,136,136,136,136,136,137,137,139,141,143,145,148,152,157,162,168,176,185,195,207,166,162,158,154,151,147,144,142,140,138,137,136,136,135,135,135,135,136,137,138,140,142,144,147,150,155,160,166,173,182,192,204,166,161,157,153,149,146,143,141,139,138,136,135,136,135,135,135,135,135,136,137,139,140,143,146,149,153,158,164,171,179,188,200,166,161,156,152,148,145,142,140,138,137,136,135,135,134,134,134,134,134,135,136,138,139,142,144,148,152,156,163,169,177,186,197,165,160,155,151,147,144,141,139,137,136,135,134,134,133,133,133,133,134,134,135,137,138,140,143,147,150,155,160,167,174,183,194,165,159,154,150,146,143,140,138,137,135,134,133,133,133,132,132,132,133,134,134,136,137,139,141,145,149,154,159,165,172,181,192,164,158,153,149,145,141,139,137,135,135,133,132,132,132,132,131,131,132,133,134,135,136,138,140,143,148,152,157,163,170,179,189,163,157,152,147,143,140,138,136,134,134,133,132,131,131,131,131,131,131,132,133,134,135,137,140,142,146,151,155,161,168,176,186,161,155,150,146,142,140,137,135,134,133,132,131,131,131,131,130,130,131,132,132,133,134,136,138,141,145,149,154,159,165,173,182,159,153,149,145,141,139,136,135,133,133,132,131,131,130,130,129,130,130,131,132,133,134,136,138,140,144,148,152,157,163,170,179,157,152,148,144,141,138,136,134,133,132,131,130,130,130,129,129,129,130,131,131,132,133,135,137,139,143,147,151,156,162,169,177,157,152,147,144,140,138,136,134,133,132,131,130,130,129,129,129,129,130,130,131,132,133,135,136,139,142,146,150,155,160,167,176,157,152,147,143,140,137,135,134,133,131,130,130,129,129,129,129,129,129,130,130,131,132,134,136,138,141,145,149,154,160,166,174,157,152,147,143,140,137,135,133,132,131,130,129,129,129,128,128,128,129,129,130,131,132,133,136,138,141,144,148,153,159,165,173,157,151,147,143,139,137,135,133,132,131,130,129,129,128,128,128,128,129,129,130,130,132,133,135,137,140,144,148,153,158,164,172,157,151,147,143,139,136,135,133,132,131,130,129,128,128,128,128,127,128,129,129,130,131,133,135,137,140,144,148,153,158,165,172,157,151,146,143,139,136,135,133,132,130,130,129,128,128,128,128,128,128,128,129,130,131,133,134,136,140,144,147,152,158,164,172,157,152,146,143,139,136,135,133,132,130,129,129,128,128,128,128,128,128,128,129,130,131,133,134,136,140,143,148,152,157,164,172,157,151,146,142,139,136,134,133,132,130,129,129,128,128,128,128,128,128,128,129,130,131,133,134,136,139,143,147,152,157,162,168,156,151,146,142,139,135,134,133,131,130,129,129,128,128,128,128,128,128,128,129,130,131,132,134,136,139,143,147,151,154,158,163,154,149,145,142,139,135,134,133,132,131,130,129,128,128,127,127,127,128,128,129,130,131,132,134,136,139,142,146,149,151,156,161,154,149,144,141,138,135,133,133,131,131,129,129,128,128,128,127,127,128,128,129,130,131,132,133,135,139,141,145,148,152,156,161,156,150,145,141,139,136,134,132,131,131,130,129,128,128,128,127,127,128,128,129,130,131,132,133,135,138,141,144,149,152,158,162,159,152,145,142,139,137,134,132,131,131,130,129,128,128,128,128,128,128,129,129,130,131,131,133,136,139,141,145,149,153,157,162,164,155,147,143,140,138,135,133,131,131,130,129,129,128,128,128,128,128,128,129,130,131,131,134,137,139,142,145,149,154,157,162,168,158,150,145,141,139,136,134,131,131,130,129,129,128,128,128,128,128,129,129,130,130,132,134,137,139,142,145,149,153,158,163,170,160,151,146,143,141,138,135,132,131,130,130,129,129,128,128,128,129,129,130,130,130,132,134,137,139,142,146,150,155,160,166,171,161,154,148,144,142,139,137,134,132,131,130,129,130,129,129,128,129,129,129,130,131,133,135,138,140,143,147,151,155,163,170,171,163,157,150,146,144,141,138,136,134,132,131,130,130,130,129,129,129,129,130,131,132,134,137,139,141,144,148,152,158,167,176,173,166,159,153,148,145,143,140,138,135,133,131,130,130,130,129,129,129,130,130,131,133,135,138,140,143,146,150,154,160,169,181
 };
 
 static uint8_t _CALIBRATION_SHADING_LS_D65_G[1024]=
 {
-154,140,128,119,111,105,99,95,91,87,85,82,81,79,79,79,78,79,79,80,82,84,86,89,93,97,102,108,115,124,134,147,149,136,125,116,109,102,97,92,89,86,83,81,79,78,77,76,76,77,78,79,80,82,85,88,91,95,100,105,112,121,131,143,145,132,122,113,106,100,95,90,87,84,81,79,78,76,76,75,75,75,76,77,79,80,83,85,89,93,98,103,110,118,128,140,141,129,119,110,104,98,93,89,85,82,79,77,76,75,74,73,73,73,74,76,77,79,81,84,87,92,96,102,108,115,124,136,138,126,116,108,102,96,91,87,83,80,78,76,74,73,72,72,72,72,72,74,75,77,79,82,85,90,94,99,105,112,122,133,135,123,114,106,100,95,89,86,82,79,76,75,73,72,71,70,70,71,72,72,74,75,79,81,84,88,92,98,104,111,119,130,132,122,112,105,99,93,88,84,81,78,76,73,72,70,69,69,69,69,70,71,72,75,77,79,83,86,91,96,102,108,118,128,130,119,110,103,97,92,87,83,79,76,74,72,71,69,69,68,68,69,69,70,72,73,75,79,82,85,90,95,101,107,115,126,129,118,109,102,96,91,86,82,79,76,73,71,69,69,68,67,67,67,68,69,71,72,75,78,81,85,88,94,99,105,114,124,128,116,107,101,95,89,85,81,77,75,72,70,69,68,67,66,66,66,67,69,70,72,74,77,80,83,88,92,98,105,113,123,126,116,106,99,94,89,84,80,77,74,72,69,68,67,66,66,66,66,66,68,69,71,73,76,79,83,87,92,98,104,111,121,126,115,106,99,93,88,83,79,76,73,71,69,67,66,66,65,65,66,66,67,69,70,72,75,79,82,86,91,96,102,111,120,125,113,105,98,92,87,83,79,76,73,71,69,67,66,65,65,65,65,66,66,68,70,72,75,78,82,85,91,96,102,110,119,124,113,104,98,92,87,82,79,76,72,70,68,67,66,65,64,64,65,66,66,68,69,72,75,78,81,85,90,95,101,109,118,123,112,104,97,92,86,82,79,76,72,70,68,66,66,65,64,64,64,65,66,68,69,72,74,77,81,85,90,95,101,109,118,123,112,104,97,92,86,82,79,75,72,70,68,66,66,64,64,64,64,65,66,67,69,72,74,77,81,85,89,95,101,109,118,123,112,104,97,92,86,82,79,75,72,70,68,66,66,64,64,64,64,65,66,67,69,72,74,77,81,85,89,95,101,108,117,123,112,104,98,92,86,82,79,76,72,70,68,66,66,65,64,64,64,65,66,67,69,72,74,77,81,85,89,95,101,108,117,123,113,104,98,92,87,82,79,76,72,70,68,66,66,65,64,64,65,66,66,68,69,72,75,77,81,85,90,95,101,109,118,124,114,105,99,92,87,83,79,76,73,71,69,67,66,65,65,65,65,66,66,68,70,72,75,78,82,85,90,95,101,109,119,125,114,106,99,93,88,83,79,76,73,71,69,67,66,66,65,65,66,66,67,69,70,72,75,79,82,86,91,96,102,110,120,126,116,106,99,94,89,84,80,77,74,72,69,68,67,66,66,66,66,66,68,69,71,73,75,79,82,87,92,97,103,111,120,127,116,108,101,95,89,85,81,77,75,72,70,69,68,66,66,66,66,67,69,69,72,74,76,79,83,88,92,98,104,112,121,129,118,109,102,96,90,86,82,79,76,73,71,69,69,68,67,67,67,68,69,71,72,75,77,81,84,88,93,99,105,114,124,131,119,110,103,97,92,87,83,79,76,74,72,71,69,69,68,68,69,69,70,72,73,75,79,82,85,89,95,101,107,115,125,133,122,112,105,99,93,89,84,81,78,76,73,72,70,69,69,69,69,70,71,72,75,77,79,82,86,91,96,101,108,117,127,136,124,114,106,100,95,89,85,82,79,76,75,73,72,71,70,70,71,72,72,74,75,78,81,84,88,92,98,103,110,119,129,138,126,117,109,102,96,91,87,83,80,78,76,74,73,72,72,72,72,72,74,75,77,79,82,85,89,94,99,105,112,121,131,142,129,119,111,104,98,93,89,85,82,79,77,75,75,73,73,73,73,74,75,76,79,81,84,87,91,95,101,107,114,123,134,145,132,122,113,106,100,95,90,87,84,81,79,77,76,75,75,75,75,75,77,78,80,82,85,88,93,98,103,109,117,127,138,149,136,126,116,109,102,97,92,89,85,83,81,79,78,77,76,76,76,77,79,80,82,85,87,91,95,99,105,112,120,130,142,154,140,129,119,111,105,99,95,91,87,85,82,81,79,79,78,78,78,79,80,82,84,86,89,92,96,101,107,114,123,133,146
+149,150,151,150,148,146,144,142,140,139,138,138,137,137,137,137,137,137,138,140,141,142,144,146,149,153,157,161,166,172,180,190,150,150,150,149,147,145,143,141,139,138,138,137,137,136,136,136,136,136,137,139,140,141,143,145,148,151,155,159,165,170,178,186,151,150,150,148,146,144,142,140,139,138,137,136,136,135,135,135,135,135,136,137,139,140,142,144,146,150,153,157,162,168,175,182,152,151,149,147,145,143,141,139,138,137,136,135,135,134,134,134,134,135,135,136,137,139,141,143,145,148,152,156,161,166,172,179,153,151,149,147,144,142,140,138,137,136,135,134,135,134,133,133,133,134,134,135,136,138,140,142,144,147,150,154,159,164,170,177,153,151,149,146,144,141,139,138,136,135,134,134,133,133,133,133,133,133,133,134,136,137,139,141,143,146,149,153,157,162,169,176,153,151,148,146,143,140,138,137,135,134,134,133,133,132,132,132,132,132,133,133,135,136,137,139,142,145,148,152,156,161,167,174,154,150,147,145,142,140,138,136,135,134,133,132,132,132,131,131,131,132,132,133,134,135,136,138,141,144,147,150,154,159,165,172,153,150,147,144,141,139,137,135,134,133,132,132,131,131,131,131,131,131,132,132,133,134,135,137,140,142,146,149,153,158,164,171,153,149,146,143,140,138,136,134,133,133,132,131,131,131,130,130,130,131,131,132,132,133,135,136,139,141,144,147,151,156,162,169,152,148,145,142,139,137,135,134,133,132,131,131,130,130,130,130,130,130,130,131,132,133,134,136,138,140,143,146,150,154,160,166,150,147,144,141,139,137,135,134,133,132,131,130,130,130,129,129,129,130,130,131,131,132,133,135,137,139,142,145,148,152,157,163,149,146,143,141,138,136,134,133,132,131,131,130,130,129,129,129,129,129,130,130,131,132,133,135,136,138,141,144,147,151,156,161,149,146,143,140,138,136,134,133,132,131,130,130,129,129,129,128,129,129,130,130,131,132,133,134,136,138,140,143,146,150,155,160,149,146,143,140,138,136,134,133,132,131,130,130,129,129,128,128,128,129,129,129,130,131,132,133,135,137,140,142,146,150,154,159,149,146,143,140,137,135,134,133,132,131,130,129,129,129,128,128,128,128,129,129,130,131,132,133,135,137,139,142,145,149,153,159,149,146,142,140,137,135,134,132,131,130,130,129,129,128,128,128,128,128,128,129,130,130,131,133,134,136,139,142,145,148,153,158,149,146,142,140,137,135,133,132,131,130,130,129,129,128,128,128,128,128,128,129,129,130,131,132,134,136,139,141,144,148,153,158,149,146,142,140,137,134,133,132,131,130,129,129,128,128,128,128,128,128,128,129,129,130,131,132,134,136,138,141,144,148,152,157,149,146,142,140,136,134,133,132,131,130,129,129,128,128,128,128,128,128,128,128,129,130,131,132,133,136,138,141,144,147,151,156,149,146,142,139,136,134,133,132,131,130,129,129,128,128,128,128,128,128,128,128,129,130,131,132,133,135,138,141,143,147,149,153,147,145,142,139,136,133,133,132,131,130,129,129,128,128,128,128,127,128,128,128,129,130,131,132,133,135,137,140,142,144,145,148,146,143,141,139,136,133,132,132,131,130,130,129,128,128,128,128,128,128,128,128,129,130,131,131,133,135,137,139,140,141,143,145,145,143,140,138,136,133,132,132,131,130,130,129,129,128,128,128,128,128,128,128,129,130,130,131,132,134,136,137,139,141,143,145,147,143,140,138,136,134,132,132,131,131,130,129,129,128,128,128,128,128,128,129,129,130,130,131,132,134,135,137,139,141,144,146,149,145,140,138,136,135,133,131,131,131,130,129,129,128,128,128,128,128,128,129,129,130,130,131,132,134,136,137,139,141,143,145,153,147,141,139,137,135,133,132,131,131,130,130,129,129,128,128,128,128,128,129,129,129,129,131,133,134,136,137,139,141,142,144,156,150,143,140,138,136,135,132,131,130,130,130,129,129,128,128,128,128,128,129,129,129,129,131,133,134,136,137,139,141,143,145,157,151,145,141,139,137,136,134,132,130,130,130,130,129,129,129,129,129,129,129,129,129,130,131,133,134,136,138,140,141,144,146,157,151,147,142,140,139,137,135,133,131,130,130,130,129,129,129,129,128,128,128,128,129,130,132,133,135,136,138,140,141,145,148,156,152,148,144,141,140,138,136,134,132,131,130,129,129,129,129,129,128,128,128,129,130,131,132,134,135,136,138,140,143,147,152,157,154,149,145,142,141,139,137,135,133,131,130,130,129,129,129,128,128,128,128,129,130,131,133,134,135,137,139,141,143,148,154
 };
 
 static uint8_t _CALIBRATION_SHADING_LS_D65_B[1024]=
 {
-152,138,126,117,109,103,98,93,90,87,84,81,80,78,78,78,78,79,79,80,82,83,85,88,92,96,101,107,114,122,133,145,148,134,123,114,108,102,96,92,88,86,82,80,78,77,77,76,76,76,77,79,79,81,84,87,90,94,99,104,110,120,129,141,143,131,120,111,105,99,95,90,86,83,81,78,77,75,75,74,74,75,76,76,78,80,82,85,88,92,97,102,108,117,126,138,139,127,118,109,103,97,92,88,85,82,79,77,76,74,73,73,72,73,74,75,76,78,81,83,86,91,94,101,106,114,124,134,136,125,115,107,101,95,91,86,83,80,78,75,74,72,71,72,72,72,72,73,75,77,79,81,85,88,93,98,104,111,120,131,134,122,113,105,99,94,89,85,82,78,76,74,72,71,70,70,70,70,71,71,73,75,78,80,83,87,91,97,102,110,118,128,132,121,111,104,98,92,88,83,80,77,75,73,72,70,69,68,68,69,69,71,72,74,76,79,82,86,90,95,100,107,116,127,130,118,109,102,96,91,86,82,78,76,74,71,70,69,69,68,68,68,68,70,72,73,75,78,81,85,89,95,100,106,114,124,128,117,108,101,96,90,86,81,78,76,73,71,69,68,67,67,67,67,68,68,70,72,75,77,80,84,88,93,98,104,113,123,126,115,107,99,94,89,85,81,77,74,72,70,69,67,66,66,66,66,67,68,69,72,73,76,79,83,87,92,98,104,112,121,125,115,105,98,93,88,83,79,76,74,71,69,68,67,65,66,66,65,66,67,68,71,73,75,78,82,86,92,97,103,111,120,124,114,105,98,92,87,83,79,76,73,71,68,67,66,66,65,65,66,65,67,69,70,72,75,78,81,85,91,95,102,110,119,123,112,104,98,92,87,82,78,76,72,70,69,67,66,65,65,65,65,66,66,68,69,71,75,78,81,85,90,95,101,109,118,123,112,103,97,92,86,82,79,75,72,70,68,66,66,65,64,64,64,65,66,67,69,72,74,77,81,84,89,94,101,108,117,122,112,103,97,91,86,82,78,75,71,69,68,66,65,64,64,64,64,65,66,67,69,72,74,77,80,85,89,94,101,108,116,121,112,103,97,91,86,82,78,75,71,69,68,66,65,64,64,64,64,65,65,67,68,71,74,77,80,84,89,94,101,107,116,121,111,103,97,91,86,81,78,75,71,69,68,66,65,64,64,64,64,65,65,67,68,71,74,77,80,85,89,94,101,108,117,121,112,103,97,91,86,81,78,75,71,69,68,66,66,64,64,64,64,65,66,67,68,71,74,77,81,85,89,94,101,108,117,122,111,104,97,92,86,82,79,75,72,70,68,66,66,65,64,64,65,66,66,67,69,72,74,77,81,84,89,94,101,108,117,122,112,105,98,92,87,82,78,76,72,70,69,67,66,65,65,65,65,66,66,68,69,71,75,77,81,84,89,95,101,109,117,124,114,105,98,92,87,83,79,75,73,71,68,67,66,66,65,65,66,65,67,69,70,72,75,78,82,85,90,95,102,109,118,125,114,105,98,93,88,84,80,76,74,72,69,68,66,65,66,66,66,66,67,68,71,72,75,79,82,86,91,96,102,111,120,126,115,107,100,94,88,85,80,77,74,71,70,69,67,66,66,66,66,67,68,69,72,74,76,79,83,87,91,97,104,111,121,129,117,108,101,96,90,86,82,78,75,73,71,69,68,67,67,67,67,68,68,70,72,75,77,80,84,88,93,98,104,113,123,130,118,109,102,96,91,86,82,79,76,74,71,70,69,69,68,68,68,68,70,72,73,75,78,81,84,89,95,100,106,114,124,132,121,111,104,98,92,88,83,80,77,75,73,71,70,69,68,68,69,70,71,72,74,76,79,82,86,90,95,101,107,116,126,134,122,113,105,99,94,89,85,82,79,76,74,72,72,71,70,70,70,71,71,73,75,78,80,83,88,91,97,102,109,118,129,137,125,115,108,101,95,90,86,83,80,77,76,74,72,71,72,71,72,72,73,75,77,79,81,84,88,94,98,104,111,120,131,140,128,118,109,103,97,92,88,85,82,78,77,75,74,73,72,72,73,73,75,76,79,81,83,86,90,94,100,106,113,123,134,143,131,120,112,104,99,94,90,86,83,81,79,77,75,75,74,74,75,75,76,78,80,82,85,88,92,97,102,108,116,126,137,146,134,124,115,108,102,96,91,88,85,82,80,78,77,76,76,75,76,77,78,79,82,84,87,90,94,98,104,111,119,128,140,151,138,127,118,110,103,98,94,90,87,84,81,80,78,78,78,77,78,79,79,82,83,85,88,91,96,100,107,113,122,132,144
+145,147,147,146,145,143,141,139,138,137,136,136,135,135,135,135,136,136,137,138,139,141,143,145,148,152,155,159,163,168,174,182,146,146,147,146,144,142,140,138,137,136,135,135,135,135,135,135,135,135,136,137,139,140,142,144,147,150,154,157,162,166,172,179,147,147,147,145,143,141,140,137,136,136,135,134,134,134,134,134,134,135,135,137,138,139,141,143,145,149,152,155,160,165,170,176,148,147,147,145,143,141,138,137,136,135,134,134,134,133,133,134,134,134,135,136,137,139,140,142,145,148,151,154,158,163,168,174,149,148,146,144,142,140,138,137,136,135,134,133,134,133,133,133,133,133,134,135,136,137,139,141,144,146,149,153,157,161,166,172,149,147,146,144,142,139,138,136,135,134,133,133,133,132,132,133,133,133,133,134,136,137,138,141,143,145,148,151,156,160,165,171,150,148,146,143,141,139,137,136,134,134,133,132,132,132,132,132,132,132,133,134,135,136,138,139,142,144,147,150,154,158,163,169,150,148,145,142,140,138,137,135,134,133,133,132,132,132,132,132,132,132,132,133,134,135,137,138,141,143,146,149,152,157,162,167,150,147,145,142,140,137,136,134,133,132,132,131,131,131,131,131,131,131,132,132,133,135,136,138,140,142,145,148,151,156,160,166,149,146,144,141,138,136,135,133,133,132,131,131,131,131,130,130,131,131,131,132,133,134,135,137,139,141,144,146,149,154,159,164,148,145,142,140,137,136,134,133,132,132,131,130,130,130,130,130,130,130,131,131,132,133,135,136,138,140,142,145,148,151,156,162,146,144,142,139,137,135,134,132,132,131,131,130,130,130,130,129,130,130,130,131,132,133,134,136,137,139,141,144,146,150,154,159,145,143,141,138,136,135,133,132,131,131,130,130,130,129,129,129,129,129,130,131,132,132,134,135,136,138,140,143,145,148,153,158,145,143,141,138,136,134,133,132,131,130,130,130,129,129,129,129,129,129,130,130,131,132,133,134,135,137,139,142,145,147,152,156,145,143,140,138,136,134,133,132,131,130,129,129,129,129,128,128,129,129,129,130,131,131,132,134,135,136,139,141,144,147,150,155,145,143,140,138,136,134,132,132,131,130,130,129,129,128,128,128,128,129,129,130,130,131,132,133,134,136,138,141,143,146,150,154,145,143,140,138,136,134,132,132,131,130,129,129,128,128,128,128,128,128,129,129,130,131,132,133,134,135,137,140,143,146,149,153,146,143,140,138,135,133,132,132,131,130,129,129,128,128,128,128,128,128,128,129,130,130,131,132,133,135,137,140,142,145,149,153,146,143,140,138,135,133,132,132,131,130,129,129,128,128,128,128,128,128,128,129,129,130,131,132,133,135,137,140,142,145,148,152,146,143,140,137,134,132,132,131,130,130,129,129,128,128,128,128,128,128,128,128,129,130,130,131,133,135,137,139,142,144,147,151,145,142,140,137,134,132,132,131,131,130,129,128,128,128,128,127,128,128,128,128,129,129,130,131,132,134,136,139,141,143,145,147,143,141,139,137,134,132,132,131,131,130,129,129,128,128,127,127,128,128,128,128,129,129,130,131,132,134,136,138,140,141,141,142,141,139,138,136,134,132,131,131,131,130,129,129,128,128,128,128,128,128,128,128,129,129,130,130,132,133,135,136,137,138,138,139,140,139,137,135,133,132,131,131,131,130,129,129,128,128,127,127,127,128,128,128,128,129,129,130,131,133,134,135,136,137,138,138,141,139,137,135,133,132,131,130,131,130,129,129,128,128,128,127,127,128,128,128,128,129,129,129,130,132,133,134,136,137,138,139,143,140,137,135,134,133,131,130,130,130,129,129,128,128,128,128,127,127,128,128,128,128,128,129,131,132,133,134,135,137,137,138,145,142,138,135,134,133,132,130,129,130,130,129,128,128,128,127,128,127,128,128,128,128,128,129,131,132,133,134,135,136,137,137,148,144,139,137,135,134,132,131,129,129,129,129,128,128,128,128,128,127,128,127,128,127,128,129,130,131,133,134,135,136,137,137,149,145,141,138,136,135,133,132,130,129,129,129,129,128,128,128,128,128,128,127,127,127,128,129,131,132,132,134,135,136,137,139,149,145,142,139,137,135,134,132,131,129,128,128,128,128,128,128,127,127,127,127,127,127,128,129,131,132,133,134,136,136,138,140,148,146,143,140,138,137,135,133,132,130,129,128,128,128,128,127,127,126,126,126,127,127,128,129,131,132,132,134,136,136,140,143,150,148,144,141,139,138,136,134,132,131,129,128,127,128,127,127,126,126,126,126,126,127,128,130,131,132,132,134,135,137,139,144
 };
 
 static uint8_t _CALIBRATION_SHADING_LS_CWF_R[1024]=
 {
-164,147,134,123,115,107,102,97,93,90,87,84,83,81,80,79,80,80,80,82,83,86,88,91,96,100,106,112,120,129,140,155,158,143,131,120,112,105,100,94,90,87,84,82,80,80,78,77,77,78,79,80,82,83,86,89,93,98,103,109,117,126,136,151,153,139,127,118,110,103,97,92,88,85,83,80,79,77,76,76,76,76,77,78,80,82,84,87,91,96,100,107,113,123,134,147,148,135,124,115,108,101,95,90,87,83,81,79,76,76,75,74,74,74,75,76,78,80,83,86,90,93,98,104,111,120,130,143,144,132,121,112,105,99,94,89,85,82,79,77,75,74,72,73,73,72,73,75,76,78,81,84,87,92,96,102,109,116,127,140,141,128,118,110,103,97,91,87,83,80,77,76,73,73,72,71,71,71,72,73,75,77,80,83,86,89,94,100,106,114,124,136,139,126,116,108,101,95,90,86,82,79,77,74,73,71,70,69,69,70,71,72,73,76,78,81,84,88,93,99,105,112,122,133,137,125,115,106,100,93,89,84,80,77,75,73,71,70,70,69,69,69,69,71,73,74,77,80,84,87,92,96,103,110,119,131,135,123,112,104,98,93,87,82,80,77,74,72,70,69,68,68,67,68,69,69,72,73,76,79,82,86,90,96,102,109,118,129,133,121,112,103,97,91,87,82,78,76,73,71,70,68,67,67,66,67,68,69,70,73,75,78,81,85,89,95,101,107,116,127,132,120,110,102,96,90,86,81,77,75,73,70,69,67,66,66,66,66,67,68,69,72,74,77,80,84,89,93,100,107,116,126,131,118,109,101,95,90,85,80,76,74,72,69,68,66,66,66,66,66,66,67,69,71,73,76,80,83,88,93,99,105,114,125,129,118,108,100,94,89,84,80,76,73,71,69,67,66,66,65,65,65,66,67,69,70,72,76,79,83,87,92,98,104,113,123,128,117,108,100,94,89,84,80,76,73,71,69,67,66,65,64,64,65,66,66,68,70,73,75,78,83,86,92,97,104,113,123,128,117,108,100,94,88,83,80,76,72,70,69,66,66,65,64,64,64,66,66,68,69,73,75,78,82,86,91,97,103,112,123,129,117,107,100,94,88,83,80,76,72,70,68,66,66,65,64,64,64,66,66,68,69,72,75,78,82,86,91,97,103,112,122,129,116,107,100,94,88,83,80,76,72,70,69,66,66,65,64,64,64,65,66,68,69,72,75,78,82,86,91,96,103,112,122,128,117,108,101,94,88,83,80,76,73,70,69,67,66,65,64,64,64,66,66,68,69,72,75,78,82,86,91,97,103,112,122,128,117,108,101,94,89,84,80,76,73,71,69,67,66,65,64,64,65,66,66,68,70,73,75,79,82,86,92,97,103,113,123,129,117,108,100,95,90,84,80,76,74,71,70,67,67,66,65,65,65,66,67,69,70,72,76,79,83,86,92,97,104,113,123,130,118,109,101,95,90,85,80,77,74,72,69,68,66,66,66,66,66,66,67,69,71,73,76,80,82,87,93,98,105,113,124,131,119,110,102,96,90,86,81,78,75,73,70,69,67,66,66,66,67,67,68,69,72,73,76,79,83,88,93,99,106,114,125,133,122,111,104,97,91,86,83,79,76,72,71,70,68,67,66,66,67,67,69,70,73,75,77,80,84,89,94,100,106,116,126,135,123,113,105,98,92,87,83,80,76,74,72,70,69,68,67,67,68,69,69,71,73,75,78,81,86,90,95,101,108,117,128,136,124,115,106,99,94,89,84,80,77,75,72,71,69,69,69,68,69,69,70,72,74,76,80,83,86,91,96,103,109,120,130,139,127,117,107,101,95,90,86,82,79,76,74,73,71,70,69,69,70,70,72,73,76,77,80,83,88,93,98,104,112,121,132,142,129,118,110,103,97,91,87,83,80,77,75,73,73,72,71,70,71,72,72,74,76,79,82,85,90,94,100,106,113,123,135,145,131,120,112,105,99,94,89,85,81,79,76,75,73,72,72,72,73,73,74,76,78,80,83,86,90,96,101,108,116,126,137,148,135,124,114,107,100,95,90,86,83,80,78,76,75,74,73,73,74,75,76,77,80,82,85,88,93,97,103,109,118,129,141,151,138,127,117,110,103,97,92,88,85,82,79,78,76,76,75,75,76,76,77,79,81,83,86,90,94,100,106,113,121,132,145,156,142,130,121,112,105,99,94,90,87,84,82,80,79,78,77,77,77,78,80,81,82,86,89,92,96,102,108,116,125,135,148,162,147,134,124,114,107,101,97,93,89,87,84,82,80,80,79,79,79,79,81,83,85,87,90,94,99,104,110,119,128,139,153
+175,173,170,166,161,157,153,150,147,145,143,142,141,140,139,139,140,140,142,143,145,148,150,154,158,163,170,177,187,197,208,219,175,171,169,163,159,155,151,148,146,143,142,140,140,139,138,139,139,140,141,142,144,146,149,152,156,161,167,174,183,193,203,214,176,171,167,162,158,153,150,147,144,142,140,139,139,138,138,138,138,139,139,141,142,144,147,150,154,159,165,171,180,190,199,210,176,170,165,160,156,152,148,145,143,141,139,139,138,137,137,137,138,138,138,139,141,143,145,148,152,157,162,169,177,186,196,208,177,170,164,159,155,151,147,144,142,140,138,138,138,137,136,136,137,137,138,139,140,142,144,147,151,155,160,167,174,183,194,206,177,169,163,157,153,149,146,143,140,139,138,137,137,136,135,135,135,136,137,138,139,140,143,146,149,153,159,165,172,180,191,204,176,168,161,156,152,147,144,141,139,138,137,136,135,134,134,134,134,135,135,137,138,139,141,144,148,152,157,163,170,177,188,201,174,166,159,155,150,146,143,140,138,137,136,135,134,133,133,133,133,134,134,135,137,139,140,143,146,150,155,161,167,175,185,197,173,165,158,154,149,145,142,139,137,137,135,134,133,132,132,132,132,133,133,134,135,137,139,141,145,149,154,159,166,173,182,194,172,164,158,152,148,144,141,138,137,136,134,133,132,132,131,131,132,132,133,133,134,136,138,140,144,147,152,158,164,171,180,190,170,163,157,152,147,143,140,138,136,135,133,132,132,131,130,130,131,131,132,132,133,135,137,139,142,146,150,156,162,169,177,188,169,162,155,150,145,142,139,137,135,134,132,131,131,130,130,130,130,131,131,131,133,134,136,138,141,145,149,154,160,167,176,185,168,160,154,149,145,141,138,136,135,133,132,131,131,130,129,129,130,130,131,131,132,133,135,137,140,144,148,152,158,165,173,183,167,159,153,148,144,140,138,136,134,132,131,131,130,130,129,129,129,130,130,131,132,133,134,137,139,143,147,151,157,164,171,180,166,159,153,148,143,140,137,135,133,132,131,130,130,129,129,129,129,129,130,130,131,132,134,136,139,142,146,151,156,162,170,179,165,158,152,147,143,140,137,134,133,132,131,130,129,129,128,129,129,129,129,130,131,132,134,136,138,142,145,150,155,161,169,178,165,158,152,147,143,140,136,133,133,132,130,130,129,128,128,128,128,129,129,130,131,132,133,135,138,141,145,150,155,161,169,178,165,158,152,147,143,140,136,133,132,131,130,129,129,128,128,128,128,129,129,129,130,132,133,135,138,141,144,149,155,160,168,178,164,157,152,147,143,139,135,133,132,131,130,129,129,128,127,128,128,128,129,129,130,132,133,135,137,141,144,149,154,160,168,177,163,156,151,147,142,139,136,132,131,131,130,129,129,128,128,128,128,128,128,129,130,131,132,134,136,140,144,149,153,159,166,173,166,158,150,145,142,139,135,132,131,130,130,129,128,128,128,128,128,128,129,129,130,131,132,134,137,140,144,148,152,157,161,167,167,158,150,145,141,138,135,132,131,130,130,129,129,128,128,128,128,128,129,129,130,131,132,134,136,140,143,146,150,155,160,164,167,158,151,145,141,138,135,133,130,129,129,129,128,128,127,127,128,128,129,129,130,130,132,133,136,139,142,146,150,154,160,165,167,159,152,146,142,139,136,133,131,129,128,129,128,128,128,127,128,128,129,129,129,130,132,133,136,139,142,146,151,155,160,165,167,160,153,146,142,139,136,133,131,129,128,128,128,128,128,128,128,128,128,128,129,130,132,133,137,140,142,146,151,155,160,165,169,161,155,148,143,139,137,134,131,130,128,127,127,127,127,127,128,128,128,128,129,130,132,134,137,140,143,147,151,156,160,165,173,164,157,149,144,140,138,135,132,130,129,128,127,127,127,127,128,128,128,129,129,130,132,134,137,140,143,148,152,156,161,166,179,167,158,151,145,142,139,136,133,131,130,129,128,127,128,127,127,128,129,129,130,131,132,135,138,140,144,148,152,157,162,167,189,172,159,154,147,143,140,137,135,132,131,129,129,128,128,127,128,128,129,129,130,131,133,136,138,141,145,149,153,158,163,169,200,179,160,155,149,145,142,139,136,134,132,130,129,129,129,128,128,129,129,130,130,132,134,137,139,142,146,150,155,160,166,172,218,188,164,158,152,147,144,141,138,136,133,132,130,130,130,129,129,130,130,131,132,133,136,138,140,144,147,152,157,162,168,174,231,188,168,158,155,150,146,143,140,137,135,133,131,131,130,130,130,130,131,132,133,135,137,139,142,145,149,153,159,165,171,177
 };
 
 static uint8_t _CALIBRATION_SHADING_LS_CWF_G[1024]=
 {
-156,142,130,120,112,106,99,95,91,88,86,83,81,80,79,79,79,79,79,81,82,85,87,90,94,98,103,108,116,125,136,148,151,137,127,117,110,103,98,93,89,86,83,82,79,78,77,77,77,77,78,79,81,82,85,89,92,96,101,106,113,122,132,144,146,134,123,114,106,101,96,91,87,84,82,79,78,76,76,75,75,76,76,77,79,81,83,86,90,94,99,104,111,119,128,141,142,130,120,111,105,99,94,89,86,82,80,78,76,75,74,73,73,74,75,76,77,79,82,85,88,92,97,102,108,116,125,137,140,127,117,109,103,97,92,87,84,81,78,76,75,73,72,72,72,72,73,74,76,78,80,83,86,90,95,100,106,114,123,134,137,125,115,107,101,95,90,86,82,79,77,75,73,72,71,70,70,71,72,72,74,76,79,82,85,89,93,98,105,111,121,131,134,123,113,105,99,93,89,85,81,78,76,73,72,71,69,69,69,69,70,72,73,75,77,80,83,87,92,97,102,109,118,129,132,120,111,103,98,93,87,83,79,77,75,72,71,69,69,68,68,69,69,70,72,74,76,79,82,85,90,95,102,108,117,128,130,119,110,103,96,91,86,82,79,76,73,72,69,69,68,67,67,68,68,69,71,73,75,78,81,85,89,94,100,106,115,125,129,118,108,101,96,90,86,81,78,75,72,70,69,68,67,66,66,67,67,69,70,72,74,77,80,84,89,93,98,105,114,124,128,116,107,100,94,89,85,80,77,74,72,70,68,67,66,66,66,66,67,68,69,71,73,76,79,83,88,92,98,104,112,122,126,116,106,99,93,89,84,80,76,73,71,69,68,66,66,65,66,66,66,67,69,71,72,76,79,82,87,92,97,103,111,121,126,115,106,99,93,88,83,79,76,73,71,69,67,66,65,65,65,65,66,67,68,70,72,76,79,82,86,91,96,103,111,120,125,114,105,98,93,87,82,79,76,72,70,68,67,66,65,64,64,65,66,66,68,69,72,75,78,82,85,90,96,102,110,120,125,114,105,98,92,87,82,79,76,72,70,68,66,66,65,64,64,64,65,66,68,69,72,74,78,81,85,90,95,102,110,119,124,113,105,98,92,87,82,79,76,72,70,68,66,66,64,64,64,64,65,66,67,69,72,74,77,81,85,90,95,102,109,118,124,113,104,98,92,87,82,79,76,72,70,68,66,66,64,64,64,64,65,66,67,69,72,74,77,81,85,90,95,102,109,118,124,113,105,98,92,87,82,79,76,72,70,68,66,66,65,64,64,64,65,66,68,69,72,75,78,81,85,90,95,102,109,119,125,114,105,98,92,87,82,79,76,72,70,69,66,66,65,64,64,65,66,66,68,69,72,75,78,82,85,90,96,102,110,119,125,115,106,99,93,88,83,79,76,73,71,69,67,66,65,65,65,65,66,66,68,70,72,75,78,82,86,91,96,102,110,120,126,115,106,99,93,88,84,80,76,73,71,69,68,66,66,65,65,66,66,67,69,70,72,76,79,82,86,91,97,103,111,121,127,116,107,100,94,89,85,80,77,74,72,69,68,67,66,66,66,66,66,68,69,71,73,76,79,83,87,92,98,104,111,121,129,117,109,101,95,90,86,81,78,75,72,70,69,68,67,66,66,66,67,69,70,72,74,77,80,83,88,93,98,105,113,123,130,119,109,102,96,91,86,82,79,76,73,72,69,69,68,67,67,67,68,69,71,72,75,78,81,85,89,94,99,106,115,124,132,121,111,103,97,92,87,83,79,77,74,72,71,69,69,68,68,69,69,70,72,74,76,79,82,85,90,95,101,108,116,126,134,123,113,106,99,93,89,85,81,78,76,73,72,71,69,69,69,69,70,71,72,75,77,79,83,87,91,96,102,109,118,128,136,125,115,107,101,95,90,86,82,79,76,75,73,72,71,70,70,71,71,72,74,76,79,81,84,88,92,98,104,111,120,131,139,127,118,109,102,97,92,87,84,81,78,76,74,73,72,72,72,72,72,74,76,77,79,82,85,89,94,100,105,113,122,134,142,130,120,111,105,99,93,89,86,82,79,77,76,75,74,73,73,73,74,76,77,79,81,84,87,92,96,102,108,115,125,136,146,133,122,114,107,101,96,91,87,84,81,79,78,76,76,75,75,75,76,77,79,80,82,85,89,93,98,104,110,118,128,140,150,137,126,117,109,103,98,93,89,86,83,81,79,78,77,76,76,77,77,79,80,82,85,87,91,95,100,105,112,121,131,144,155,141,130,120,112,106,99,95,91,88,85,82,81,79,79,78,78,79,79,80,82,84,86,89,93,97,102,108,115,125,134,147
+156,158,157,155,152,150,148,145,143,142,140,139,139,138,138,138,138,138,139,140,142,143,145,148,151,154,158,163,169,174,181,188,157,156,157,154,151,149,147,144,142,141,139,138,138,137,137,137,137,138,138,139,141,142,144,146,149,153,157,161,166,172,178,185,159,157,157,153,151,148,145,143,141,139,138,137,137,137,136,136,136,137,137,138,139,141,142,145,148,151,155,159,164,171,176,183,160,158,156,152,150,147,144,142,140,138,137,137,136,136,135,136,136,136,136,137,138,140,141,143,146,149,153,157,162,168,174,181,161,158,155,152,149,146,143,141,139,138,137,136,136,135,135,135,135,135,135,136,137,138,140,142,145,148,151,156,160,166,173,180,162,158,154,151,148,145,142,140,138,137,136,136,135,134,134,134,134,134,134,135,136,137,139,141,143,147,150,154,159,164,171,178,162,157,153,150,147,144,141,139,137,136,136,135,134,133,133,133,133,133,133,134,136,137,138,140,142,145,149,153,157,162,169,177,161,156,152,149,146,143,140,138,137,136,135,134,133,132,132,132,132,132,132,133,134,136,137,139,141,144,147,151,156,160,167,174,160,156,152,148,145,142,140,138,136,135,134,133,132,132,131,131,131,131,132,132,133,135,136,138,140,143,146,150,154,159,165,172,160,155,151,148,144,141,139,137,136,134,133,132,132,131,131,130,131,131,131,131,132,134,135,137,139,142,145,149,153,158,163,170,159,154,151,147,143,141,138,136,135,134,132,132,131,130,130,130,130,130,130,131,132,133,134,136,138,141,144,147,152,156,162,168,158,154,149,146,142,140,137,136,134,133,132,131,131,130,129,129,130,130,130,130,131,132,133,135,137,140,143,146,150,155,160,166,157,152,148,145,141,139,137,135,134,132,131,131,130,129,129,129,129,129,130,130,131,132,133,134,136,139,141,145,148,153,158,164,156,152,148,144,141,138,136,135,133,132,131,130,130,129,129,128,129,129,129,130,130,131,132,134,136,138,140,144,147,152,157,162,156,151,147,144,141,138,136,134,133,132,131,130,130,129,128,128,128,129,129,129,130,131,132,133,135,137,140,143,147,151,156,161,156,151,147,144,141,138,135,133,132,131,130,130,129,129,128,128,128,128,129,129,130,130,132,133,135,137,139,142,146,150,155,160,156,151,147,143,140,138,135,132,132,131,130,130,129,128,128,128,128,128,128,129,129,130,131,133,135,137,139,142,145,149,154,160,155,151,147,143,140,138,134,132,132,131,130,129,129,128,128,128,128,128,128,128,129,130,131,132,134,136,139,142,145,149,154,160,154,150,147,143,140,137,134,132,131,131,130,129,129,128,128,128,128,128,128,128,129,130,131,132,134,136,139,142,145,149,153,159,154,150,146,143,140,137,134,132,131,131,130,129,129,128,128,128,128,128,128,128,129,130,131,132,133,135,138,141,144,147,151,155,155,150,145,142,139,137,134,131,130,130,130,129,129,128,128,127,128,128,128,128,129,130,130,131,133,135,137,140,143,145,146,149,156,150,145,141,138,136,133,131,130,130,130,129,129,128,128,127,128,128,128,128,129,129,130,131,132,134,136,139,141,143,145,146,156,151,146,141,138,136,134,131,130,129,129,129,129,128,128,128,128,128,128,128,129,129,129,130,132,134,136,138,140,142,144,146,156,151,146,141,138,136,134,132,130,129,129,129,129,128,128,128,128,128,128,128,128,128,129,130,132,134,136,138,140,143,144,146,156,151,147,142,139,137,134,132,131,129,128,128,128,128,128,128,128,128,128,128,128,128,129,130,132,134,136,138,140,143,144,146,157,152,148,142,139,137,135,133,131,130,128,128,128,128,128,128,128,128,128,127,128,128,129,131,133,134,136,138,140,142,144,146,160,154,149,144,140,137,135,133,131,130,129,128,127,127,127,127,127,128,127,127,128,128,129,131,133,134,136,139,140,142,144,146,166,157,150,146,141,139,136,134,132,131,130,129,128,127,127,127,127,127,128,128,128,128,130,131,133,135,137,139,141,142,144,146,174,161,150,147,143,140,138,135,134,132,130,129,128,128,128,127,127,128,128,128,128,129,130,132,133,135,137,139,141,143,145,147,182,167,151,149,144,141,139,137,135,133,131,130,129,128,129,128,128,128,128,128,129,129,131,132,134,135,137,140,142,144,146,148,198,175,154,150,146,143,140,138,136,134,132,131,129,129,129,128,128,128,129,129,129,130,131,133,134,136,138,140,143,145,146,148,208,174,157,150,148,144,141,139,137,135,133,131,130,130,129,129,129,129,129,129,130,131,132,133,135,136,139,141,144,146,147,149
 };
 
 static uint8_t _CALIBRATION_SHADING_LS_CWF_B[1024]=
 {
-155,139,128,118,110,104,99,94,90,88,85,82,81,79,79,78,78,79,79,80,81,83,86,89,93,97,102,108,114,124,133,147,150,136,125,116,108,102,97,92,89,85,83,81,79,78,77,76,76,77,78,78,80,81,84,88,91,95,100,105,112,120,130,143,145,132,121,112,106,100,95,90,87,83,81,78,77,76,76,75,75,75,75,77,78,80,82,85,88,93,98,103,110,117,127,139,141,129,119,110,103,98,93,89,85,82,79,77,75,74,73,73,73,73,74,75,76,78,81,84,87,91,95,101,107,114,124,136,138,126,116,108,102,96,92,87,83,80,78,75,74,73,72,72,72,71,72,73,75,77,79,81,85,89,94,99,105,113,121,132,135,123,113,105,100,94,89,86,82,78,76,74,72,72,71,70,70,70,71,71,73,75,78,81,84,88,92,98,103,110,119,130,133,121,112,104,99,92,88,84,80,77,75,73,72,70,69,69,68,69,70,71,72,75,76,79,82,86,91,96,101,108,117,127,130,119,110,102,96,92,86,82,79,76,74,72,70,69,69,68,68,68,68,70,72,73,75,78,82,85,89,95,101,107,116,126,129,118,109,102,95,90,85,82,78,76,73,71,69,69,68,67,67,67,68,68,71,72,75,77,80,84,88,93,98,105,114,124,127,116,107,100,95,89,85,81,77,75,72,70,69,68,66,66,66,66,67,68,69,72,74,76,79,83,88,92,98,104,112,122,125,115,106,99,93,89,84,80,76,74,72,69,68,67,66,66,66,65,66,67,68,71,73,75,78,82,86,91,97,103,111,121,125,114,106,99,92,88,83,79,76,73,71,68,67,66,66,65,65,66,65,67,69,70,72,76,79,81,85,91,96,102,111,120,124,113,105,98,92,87,82,78,75,72,70,69,67,65,65,65,65,65,66,66,68,69,71,75,78,82,85,90,95,101,110,119,123,113,104,97,92,86,82,79,75,72,70,68,66,66,65,64,64,64,65,66,67,69,72,74,77,81,85,90,95,101,109,118,123,112,103,97,91,86,82,78,75,72,70,68,66,66,64,64,64,64,65,65,67,68,72,74,77,81,85,89,95,101,109,118,122,112,103,97,92,86,82,78,75,71,69,68,66,65,64,64,64,64,65,65,67,69,71,74,77,80,85,89,95,101,108,118,122,112,103,97,92,86,82,78,75,72,69,68,66,65,64,64,64,64,65,65,67,69,71,74,77,81,85,89,95,101,108,118,122,112,104,97,92,86,82,78,75,72,69,68,66,66,64,64,64,64,65,66,67,69,71,74,77,81,85,89,95,101,109,118,122,112,104,98,92,86,82,79,75,72,70,68,66,66,65,64,64,65,65,66,68,69,72,74,77,81,85,89,95,101,109,119,123,113,105,98,92,87,82,78,76,72,70,69,67,66,65,65,65,65,66,66,68,69,71,75,78,81,85,90,95,101,110,119,124,114,105,99,92,88,83,79,75,73,71,68,67,66,66,65,65,66,65,67,68,70,72,75,78,81,85,91,96,102,110,120,125,115,106,99,93,88,84,79,76,74,72,69,68,66,65,66,66,66,66,67,68,71,72,75,78,82,86,91,97,103,111,121,126,116,107,100,95,89,85,81,77,74,71,70,69,67,66,66,66,66,67,69,69,72,74,76,79,83,88,92,98,104,112,122,128,117,109,102,95,90,85,82,78,76,72,71,69,68,67,67,67,67,68,69,70,72,75,77,80,84,88,93,98,105,113,123,130,119,111,102,97,91,86,82,79,76,74,71,70,69,69,68,68,68,68,70,72,73,76,78,81,85,89,95,100,106,115,125,132,122,111,104,98,92,88,84,80,77,75,73,71,70,69,68,68,69,70,71,72,74,76,79,82,86,91,95,101,108,117,127,135,123,114,105,99,94,89,85,82,78,76,74,72,72,71,70,70,70,71,72,73,76,78,80,84,88,92,97,103,110,119,129,138,125,116,108,102,96,91,86,83,80,77,76,74,72,71,72,71,72,72,73,75,77,79,81,85,89,94,98,104,112,121,132,141,128,118,110,103,98,92,88,85,82,78,77,76,74,73,72,72,73,74,75,76,78,81,83,87,91,95,101,107,114,124,134,145,132,121,112,105,99,95,90,86,83,81,78,77,75,75,74,74,75,75,76,78,79,82,85,88,92,97,102,109,118,127,137,148,134,124,115,108,101,96,91,88,85,82,80,78,77,76,76,75,76,77,78,80,81,84,87,90,95,99,104,111,120,130,141,152,138,128,117,110,104,98,93,90,87,84,81,80,78,78,78,77,78,78,80,82,84,85,88,92,96,102,107,114,122,133,145
+151,154,154,153,150,148,146,143,141,139,138,137,137,136,136,137,137,137,138,140,141,142,144,146,150,153,158,161,166,170,175,179,152,152,154,151,149,147,145,142,140,139,137,137,136,136,136,136,136,137,137,139,140,141,143,146,148,152,156,159,164,168,172,177,154,153,154,150,148,146,143,141,139,138,137,136,136,136,135,135,136,136,137,138,139,140,142,144,147,150,154,158,162,167,171,176,156,154,153,150,148,145,143,140,139,137,136,136,135,135,135,135,135,135,136,137,138,139,141,143,146,149,153,156,160,166,169,174,157,155,152,149,147,145,142,140,138,137,136,135,136,135,134,134,134,134,135,136,137,138,140,142,145,148,151,155,159,163,168,173,158,155,151,149,146,143,141,139,138,136,136,135,135,134,134,134,134,134,135,135,137,138,139,142,144,147,149,153,157,161,167,172,158,154,151,148,145,143,140,138,137,136,135,135,134,133,133,133,133,133,134,135,136,137,139,140,143,145,148,152,156,160,165,171,158,154,150,148,144,142,140,138,137,136,135,134,133,132,132,132,132,133,133,134,135,136,138,140,142,144,147,151,154,158,164,169,156,153,150,147,143,141,139,137,136,135,134,133,132,132,131,132,132,132,132,133,134,135,137,139,141,143,146,149,153,156,161,167,156,152,149,146,143,140,138,137,136,134,133,132,132,131,131,131,131,131,131,132,133,134,136,138,140,142,145,148,151,155,160,165,156,152,149,145,142,140,138,136,135,134,133,132,131,131,130,130,130,130,131,131,132,134,135,137,139,141,143,147,150,154,158,163,155,151,148,144,141,138,137,135,134,133,132,131,131,130,130,130,130,130,130,131,132,133,134,136,137,139,142,145,148,152,157,162,154,150,146,143,140,138,136,135,134,133,131,131,130,130,129,129,129,129,130,131,131,132,134,135,137,139,141,143,147,150,154,159,153,149,146,142,140,138,136,134,133,132,131,130,130,129,129,129,129,129,130,130,131,132,133,134,136,138,140,143,146,149,153,158,153,149,146,142,139,137,135,134,133,132,131,130,129,129,129,128,129,129,129,130,131,131,132,133,135,137,139,142,145,148,152,156,152,149,145,142,139,137,135,133,132,131,130,130,129,129,128,128,128,128,129,129,130,131,132,133,135,136,138,141,144,147,151,155,152,149,145,142,139,137,134,132,132,131,130,130,129,128,128,128,128,128,129,129,130,131,131,133,134,136,138,141,144,146,150,155,151,148,145,142,139,137,134,132,132,131,130,129,129,128,128,128,128,128,128,129,129,130,131,132,134,135,138,140,144,146,150,154,150,147,145,141,139,137,134,132,131,131,130,129,129,128,128,128,128,128,128,128,129,130,130,132,133,135,137,140,143,146,149,153,149,146,144,141,138,136,134,131,131,131,130,129,129,128,128,128,128,128,128,129,129,129,130,131,132,134,137,140,142,144,147,149,149,146,142,140,138,135,133,131,130,130,130,129,129,128,128,127,128,128,128,128,129,129,130,130,132,134,136,138,140,142,142,143,149,146,142,138,137,135,133,131,130,130,130,129,129,128,127,127,128,128,128,128,128,128,129,130,131,133,135,137,138,139,140,140,149,146,142,139,136,134,133,131,130,129,129,129,129,128,128,128,128,128,128,128,128,128,128,129,131,132,134,136,137,138,139,139,149,145,142,139,136,135,133,131,130,129,129,129,128,128,128,127,128,128,128,128,127,127,128,129,130,132,133,135,137,138,139,139,148,145,143,139,136,135,133,131,130,129,128,128,128,128,127,127,128,128,127,127,127,127,128,129,130,132,134,135,137,137,138,139,149,146,144,140,137,135,133,131,130,129,128,127,127,127,127,127,127,128,127,126,126,127,127,129,131,132,133,135,136,137,138,138,152,148,144,140,137,135,134,132,130,129,128,127,127,127,127,127,127,127,127,126,126,127,128,129,130,132,133,135,136,137,138,138,158,151,146,142,138,136,134,133,131,130,129,128,127,127,127,126,126,126,127,126,126,127,128,129,130,132,134,135,136,137,138,138,167,155,146,143,139,137,135,133,132,130,129,128,127,127,127,126,126,127,127,126,127,127,128,130,131,132,134,136,136,137,137,138,174,160,146,144,141,138,136,134,133,131,130,128,127,127,127,127,126,127,127,127,126,127,128,130,131,132,134,135,137,138,138,138,187,167,149,146,142,139,137,135,133,132,130,129,128,127,127,127,127,127,127,126,127,128,129,130,131,133,134,136,137,138,138,139,196,166,152,145,144,141,138,136,134,132,131,129,128,127,127,127,127,127,127,126,127,128,129,130,131,133,134,136,137,138,138,139
 };
 
 static uint8_t _CALIBRATION_SHADING_LS_TL84_R[1024]=
 {
-163,148,135,124,115,108,102,98,93,90,87,84,82,80,80,79,79,80,80,82,83,86,88,92,95,99,105,112,120,130,141,156,157,143,131,120,112,105,100,95,90,87,84,83,80,79,78,77,77,78,79,80,82,83,87,89,93,97,103,109,116,126,136,150,153,138,127,117,109,103,97,92,88,85,83,80,79,77,76,75,76,76,77,78,80,82,84,87,91,95,100,106,113,123,133,146,148,135,124,115,107,101,95,90,87,83,80,79,76,76,74,74,74,74,75,76,78,80,83,86,90,93,98,104,111,120,130,143,145,132,121,111,104,99,93,89,85,82,79,77,75,73,72,73,73,72,73,75,76,78,81,83,87,91,96,102,108,116,127,140,142,129,119,109,103,97,91,87,83,80,77,76,73,73,72,71,71,71,72,73,75,77,80,83,86,89,95,99,106,114,124,136,139,126,116,107,101,95,90,86,82,79,76,74,73,71,70,69,69,70,71,72,73,76,78,81,84,88,93,98,105,112,122,133,136,124,114,106,100,93,88,84,80,77,75,72,71,69,69,69,69,69,69,71,73,74,76,79,82,87,92,97,102,110,119,131,135,122,112,104,98,93,87,83,80,77,74,72,70,69,68,67,67,68,69,69,72,73,76,79,82,86,90,96,102,109,118,129,133,121,111,103,97,91,86,82,78,75,72,71,70,68,67,66,66,67,68,69,70,73,75,77,81,85,89,94,100,107,116,127,132,119,110,102,96,90,86,81,77,74,73,70,69,67,66,66,66,66,67,68,69,72,74,76,80,84,89,93,100,107,115,126,131,118,108,101,95,90,85,80,76,74,72,69,68,66,66,66,65,66,66,67,69,71,73,76,80,83,87,93,99,105,113,123,129,118,108,101,94,89,84,80,76,73,71,69,67,66,66,65,65,65,66,67,69,70,72,76,79,83,87,92,98,104,112,122,129,117,108,100,94,88,83,80,76,73,71,69,67,66,65,64,64,65,66,66,68,70,73,75,78,83,86,92,97,104,112,123,129,117,107,100,93,88,83,80,76,72,70,68,66,66,65,64,64,64,66,66,68,69,72,75,78,82,86,91,96,103,112,122,128,116,107,100,94,88,83,80,76,72,70,68,66,66,64,64,64,64,65,66,68,69,72,75,78,82,85,91,96,103,112,121,128,117,107,100,94,88,83,79,76,72,70,69,66,66,65,64,64,64,65,66,68,69,72,75,78,82,85,91,96,103,111,121,128,117,107,100,93,88,83,80,76,73,70,69,66,66,65,64,64,64,66,66,68,69,72,75,78,82,86,91,97,103,112,121,129,117,108,101,94,89,83,80,77,73,71,69,67,66,65,64,64,65,66,66,68,70,73,75,78,82,86,91,97,103,112,122,129,118,108,101,94,89,84,80,76,73,71,69,67,67,66,65,65,65,66,67,69,70,72,76,79,83,86,92,97,104,112,123,130,118,109,101,95,90,85,80,77,74,72,69,68,66,66,66,65,66,66,67,69,71,73,76,79,82,87,92,98,105,113,123,132,120,110,102,96,91,86,81,78,75,73,70,69,67,66,66,66,66,67,68,69,72,73,76,79,83,88,93,99,106,114,125,133,122,111,104,97,91,87,82,78,76,73,71,70,68,67,66,66,66,67,69,70,73,74,77,80,84,89,93,99,106,116,126,135,122,113,104,98,93,87,83,80,77,73,72,70,69,68,67,67,68,69,69,71,73,75,78,82,86,89,95,101,108,117,128,137,125,115,106,99,94,89,84,80,77,75,72,71,69,69,68,68,69,69,70,72,74,76,79,83,86,91,96,102,109,119,130,140,127,117,107,101,95,91,86,82,79,76,73,73,71,70,69,69,69,71,72,73,75,77,80,83,88,93,98,104,111,121,133,142,129,118,110,103,97,91,87,83,80,77,75,73,73,71,71,71,71,72,72,74,76,79,82,85,89,94,99,106,113,123,135,145,132,121,112,104,98,94,89,84,81,79,76,75,73,72,72,72,73,73,74,76,78,80,82,86,91,96,101,108,116,126,138,148,135,123,115,107,101,95,90,87,82,80,78,77,75,74,73,73,73,74,76,77,80,82,85,88,93,97,103,109,118,129,141,152,138,126,117,109,103,97,92,88,85,82,79,78,76,76,75,75,76,76,77,79,81,83,86,89,94,100,105,113,121,131,145,157,143,130,120,112,105,100,94,90,87,84,82,80,79,78,77,77,77,78,80,81,82,85,88,92,96,101,108,116,124,136,149,164,147,135,124,115,107,102,97,93,89,87,84,82,80,80,79,79,79,79,81,83,85,87,90,94,98,103,110,119,128,140,154
+188,182,176,170,165,161,157,153,150,147,145,143,142,141,140,140,140,141,142,143,145,148,150,154,158,163,170,177,185,194,206,220,186,179,174,168,163,159,155,151,148,145,144,142,141,140,140,139,139,140,141,142,144,146,148,152,156,161,167,174,181,191,201,214,186,178,172,166,162,157,153,149,147,144,142,141,140,139,139,138,138,139,139,140,142,144,147,150,154,159,164,171,178,187,197,209,185,177,170,165,160,156,151,148,145,143,141,139,139,138,138,137,137,138,138,139,141,143,145,148,152,156,162,169,175,184,194,206,184,176,169,163,159,154,150,147,144,142,140,139,139,138,137,136,136,137,137,138,140,141,143,146,150,154,160,166,173,181,191,203,183,175,167,162,157,152,149,145,142,141,139,138,137,137,136,135,135,135,136,137,138,140,142,145,149,153,158,164,171,178,188,200,182,173,166,160,155,151,147,144,142,140,138,137,136,135,135,134,134,134,135,136,137,139,141,144,147,151,156,162,169,176,185,197,181,172,164,159,154,149,146,143,141,139,138,136,135,134,134,133,133,134,134,135,136,138,139,142,145,149,154,160,166,173,183,194,179,171,163,158,152,148,145,142,140,139,137,135,134,134,133,133,132,133,133,134,135,136,138,141,144,148,152,157,164,171,180,191,178,170,162,156,151,147,144,141,139,138,136,134,134,133,132,132,132,132,133,133,134,136,137,140,143,146,151,156,162,169,178,188,177,169,161,155,150,146,143,140,138,137,135,134,133,132,132,131,131,131,132,132,133,135,136,138,141,145,149,154,161,168,176,185,176,167,160,154,149,145,142,139,137,136,135,133,132,131,131,130,130,130,131,131,132,134,136,137,140,144,148,153,159,166,174,183,175,167,160,154,149,145,141,138,137,135,134,132,132,131,130,129,129,130,130,131,132,133,135,136,139,143,147,152,158,165,172,181,174,166,159,153,148,143,140,138,136,134,133,132,131,130,130,129,129,129,130,130,131,132,134,136,138,141,146,150,157,163,170,179,173,165,158,152,147,143,140,137,136,134,132,131,130,129,129,129,129,129,129,130,131,132,133,135,137,141,144,149,155,161,168,177,173,164,158,152,147,143,140,137,135,133,131,130,130,129,129,129,128,128,129,129,130,132,133,134,137,140,144,149,154,160,167,175,175,165,157,151,146,143,139,137,135,132,130,129,129,129,128,128,128,128,128,129,130,131,133,134,136,139,144,148,153,159,166,175,176,165,156,151,146,142,139,136,134,132,130,128,129,129,128,128,128,128,128,128,129,131,132,133,136,139,143,148,153,159,166,174,178,165,155,149,146,142,138,135,133,131,129,128,128,128,128,127,128,128,128,128,129,130,131,133,135,139,142,146,152,157,162,168,180,167,156,150,146,141,138,134,132,131,129,128,128,128,128,128,127,127,127,127,128,129,131,132,134,137,141,145,149,153,158,164,181,168,157,150,147,142,138,134,132,131,129,128,127,127,127,127,127,127,127,127,128,129,130,132,134,137,140,144,149,153,158,162,182,169,158,151,147,143,138,135,132,131,129,128,127,126,126,126,127,126,127,127,128,129,130,131,133,137,140,144,149,152,157,162,183,170,159,152,147,143,138,134,133,131,129,128,128,127,126,126,126,126,127,127,128,129,130,131,134,137,140,144,149,152,157,162,185,172,161,152,147,144,138,135,133,131,130,128,128,127,126,127,126,126,126,127,128,129,130,131,134,137,140,144,148,152,157,162,187,174,163,154,147,143,139,135,133,131,130,129,128,127,127,127,126,126,126,127,128,129,130,132,134,137,140,144,149,153,157,162,191,177,165,155,147,143,140,136,133,131,130,129,128,127,127,127,126,127,127,127,128,129,130,132,135,138,141,145,149,153,158,164,197,182,168,157,148,144,141,137,134,132,130,129,128,128,127,127,127,127,127,127,128,129,130,132,135,138,142,146,150,154,160,165,204,186,173,161,150,145,142,138,135,133,131,130,129,128,128,128,127,127,127,128,128,129,131,133,136,139,143,147,151,155,160,167,214,192,176,165,153,147,144,140,137,134,132,130,129,129,128,128,127,128,128,128,129,130,132,134,137,140,144,148,152,156,161,168,224,201,181,169,156,149,145,142,138,135,133,131,130,130,129,129,128,128,128,129,130,131,133,135,138,141,145,149,152,157,163,170,240,210,187,173,160,151,147,143,140,137,135,133,131,130,130,130,129,129,129,130,131,133,135,137,140,143,146,150,153,158,165,174,254,217,195,177,163,154,149,145,142,139,136,134,132,131,131,130,130,130,130,131,133,134,136,138,141,144,147,151,154,159,166,176
 };
 
 static uint8_t _CALIBRATION_SHADING_LS_TL84_G[1024]=
 {
-156,141,130,120,112,106,100,95,91,88,86,83,82,80,79,79,79,79,79,81,82,85,87,90,94,99,103,108,116,125,136,149,151,137,127,117,110,103,98,93,89,86,83,82,79,79,77,77,77,77,78,79,81,82,85,89,92,96,101,106,114,122,132,145,147,134,123,114,107,101,96,91,87,84,82,79,78,76,76,75,75,76,76,77,79,81,83,86,90,94,99,105,111,119,129,141,143,130,120,111,105,99,93,89,86,82,80,78,76,75,74,73,73,74,75,76,77,79,82,85,88,92,97,102,108,116,126,138,140,128,117,109,103,97,92,87,84,81,79,76,75,73,72,72,72,72,73,74,76,78,80,83,86,90,95,100,106,114,123,134,137,125,115,107,101,95,90,86,83,79,77,75,73,72,71,71,70,71,72,72,74,76,79,82,85,89,93,98,105,111,121,132,134,123,113,106,100,94,89,85,81,78,76,73,72,71,70,69,69,69,70,72,73,75,77,80,83,87,92,97,102,110,118,129,133,121,111,104,98,93,88,83,79,77,74,72,71,69,69,68,68,69,69,70,72,74,76,79,82,86,90,95,102,108,117,128,130,120,110,103,96,91,86,83,79,76,73,72,70,69,68,67,67,68,69,69,71,73,76,78,81,85,89,95,100,107,115,125,129,118,109,101,96,90,86,81,78,75,72,70,69,68,67,66,66,67,67,69,70,72,74,77,80,84,89,93,98,105,114,124,128,117,107,100,95,89,85,80,77,74,72,70,68,67,66,66,66,66,67,68,69,71,73,76,79,83,88,92,98,104,113,123,127,116,106,100,94,89,84,80,76,73,71,69,68,66,66,66,65,66,66,67,69,71,73,76,79,82,87,92,97,103,111,121,126,115,106,99,93,88,83,79,76,73,71,69,67,66,66,65,65,65,66,67,68,70,72,75,79,82,86,91,96,103,111,121,125,114,105,98,93,87,83,79,76,72,70,69,67,66,65,64,64,65,66,66,68,69,72,75,78,82,85,90,96,102,111,120,125,113,105,98,93,87,83,79,76,72,70,68,66,66,65,64,64,64,65,66,68,69,72,75,78,82,85,90,95,102,110,119,124,113,105,98,92,87,83,79,76,72,70,68,66,66,65,64,64,64,65,66,68,69,72,74,78,81,85,90,95,102,110,119,124,113,105,98,92,87,83,79,76,72,70,68,66,66,64,64,64,64,65,66,67,69,72,74,77,81,85,90,95,102,109,119,124,114,105,98,93,87,83,79,76,72,70,68,66,66,65,64,64,64,65,66,68,69,72,75,78,81,85,90,95,102,110,119,125,114,105,98,93,87,83,79,76,72,70,69,67,66,65,64,64,65,66,66,68,69,72,75,78,82,85,90,96,102,110,120,126,115,106,99,93,88,83,79,76,73,71,69,67,66,65,65,65,65,66,66,68,70,72,75,78,82,86,91,96,102,111,120,126,116,106,100,93,89,84,80,76,73,71,69,68,66,66,65,65,66,66,67,69,71,72,76,79,82,86,91,97,103,111,121,127,117,107,100,94,89,85,80,77,74,72,69,68,67,66,66,66,66,66,68,69,71,73,76,79,83,87,92,98,104,112,122,128,117,109,101,96,90,86,81,78,75,72,71,69,68,67,66,66,66,67,69,70,72,74,77,80,84,88,93,98,105,113,123,130,120,110,103,96,91,86,83,79,76,73,72,69,69,68,67,67,67,68,69,71,72,75,78,81,85,89,94,100,106,115,124,132,121,112,103,98,92,87,83,79,77,74,72,71,69,69,68,68,69,69,70,72,74,76,79,82,85,90,95,101,108,116,127,134,123,113,106,100,93,89,85,81,78,76,73,72,71,69,69,69,69,70,71,73,75,77,80,83,87,92,96,102,109,118,128,137,125,116,107,101,95,90,86,83,79,76,75,73,72,71,70,70,71,72,72,74,76,79,81,84,89,93,98,104,111,120,131,140,127,118,110,103,97,92,87,84,81,78,76,75,73,72,72,72,72,72,74,76,77,79,82,85,90,95,100,106,113,122,133,143,130,120,112,105,99,93,89,86,82,79,77,76,75,74,73,73,73,74,76,77,79,81,84,87,92,96,102,108,115,125,136,147,134,123,114,107,101,96,91,87,84,82,79,78,76,76,75,75,75,76,77,79,80,83,85,89,93,98,104,110,118,128,140,151,137,127,117,110,103,98,93,89,86,83,81,79,78,77,76,76,77,77,79,80,82,85,88,91,95,100,105,113,121,131,144,156,141,130,120,112,106,99,95,91,88,85,82,81,79,79,78,78,79,79,80,82,84,86,89,93,97,102,108,115,125,134,147
+166,165,163,160,157,154,151,148,146,144,142,141,140,140,139,139,139,139,140,141,142,144,146,148,151,155,159,164,169,173,180,187,166,164,162,158,156,153,150,147,145,143,141,140,139,139,138,138,138,138,139,140,141,142,144,147,150,153,157,162,166,171,177,184,168,164,161,157,154,152,149,146,144,142,140,139,138,138,137,137,137,137,138,138,140,141,143,145,148,151,155,159,163,169,175,182,168,164,160,156,153,150,147,145,143,141,139,138,138,137,137,136,136,136,137,137,138,140,142,144,146,149,153,158,162,167,173,180,168,164,159,156,153,149,146,144,142,140,139,138,138,136,136,135,135,135,136,136,137,139,140,142,145,148,152,156,160,165,171,178,168,163,158,155,151,148,145,143,141,139,138,137,136,135,135,134,134,134,135,135,136,138,139,141,144,146,150,154,158,163,169,176,168,162,158,154,150,147,144,142,140,139,137,136,135,134,134,134,133,133,134,134,135,137,138,140,142,145,149,153,157,161,167,174,167,162,157,153,149,146,143,141,139,138,136,135,134,134,133,133,132,133,133,133,134,136,137,139,141,144,147,151,155,160,166,172,166,161,156,152,148,145,142,140,139,137,136,135,134,133,132,132,132,132,132,133,133,135,136,138,140,143,146,149,154,158,164,170,166,160,156,151,148,144,142,139,138,137,135,134,133,132,132,131,131,131,132,132,133,134,135,137,139,141,145,148,152,157,162,168,165,160,155,151,147,144,141,139,137,136,135,133,133,132,131,131,130,131,131,131,132,133,134,136,138,141,143,147,151,156,161,166,165,159,155,150,146,143,140,138,137,135,134,133,132,131,130,130,130,130,130,131,131,132,133,135,137,140,143,146,150,155,159,165,165,159,154,150,145,142,140,138,136,135,133,132,132,130,130,129,129,129,130,130,131,132,133,134,136,138,141,145,149,154,158,163,164,158,153,149,145,142,139,137,135,134,133,132,131,130,129,129,129,129,129,130,130,131,132,133,135,137,140,144,148,152,156,161,163,158,153,148,144,141,138,137,135,133,131,131,130,130,129,129,128,129,129,129,130,131,132,133,134,137,139,143,146,150,155,160,163,157,152,148,144,141,138,136,135,133,131,130,130,129,129,128,128,128,128,129,129,130,131,132,134,136,139,142,145,150,154,159,164,157,152,148,144,141,138,136,134,132,130,130,130,129,129,128,128,128,128,128,129,130,131,132,133,136,138,141,145,149,153,159,166,158,151,147,143,140,138,136,134,132,130,129,129,129,128,128,128,128,128,128,129,129,130,131,133,135,138,141,144,148,152,157,168,158,150,145,143,139,137,135,133,131,129,128,128,129,128,128,128,128,128,128,128,129,130,131,132,135,137,140,143,146,149,152,170,159,150,146,143,139,136,134,132,131,129,128,128,128,128,128,128,127,127,127,127,128,129,130,131,133,135,138,141,143,145,147,171,160,151,146,144,140,136,134,132,131,129,128,127,127,127,127,127,127,127,126,127,128,128,129,131,133,135,137,140,142,144,145,172,161,153,146,144,140,136,134,132,131,129,129,128,127,126,127,127,126,126,126,127,128,128,129,131,133,135,137,140,142,144,145,173,162,154,147,144,141,136,134,132,131,130,129,128,127,126,126,126,126,126,126,127,127,128,129,130,133,134,137,140,141,143,145,174,164,155,148,144,141,137,134,132,131,130,129,128,127,127,127,126,126,126,126,127,127,128,129,131,133,134,137,139,141,143,144,175,165,157,149,143,141,137,135,133,131,130,129,128,127,127,127,126,126,126,126,127,127,128,129,131,133,135,137,139,141,143,144,178,168,159,150,143,141,138,135,133,131,130,129,128,128,127,127,126,126,126,126,127,127,128,129,131,133,135,137,139,141,143,145,183,171,162,152,144,141,139,136,133,132,131,130,129,128,127,127,126,126,126,127,127,128,128,130,131,133,135,138,140,141,143,145,190,176,165,155,146,142,140,137,134,132,131,130,129,128,128,128,127,127,127,127,127,128,129,130,132,134,136,138,140,141,143,145,197,181,168,158,148,144,141,138,135,133,132,131,129,129,128,128,127,127,127,127,128,128,129,131,132,134,136,139,140,141,143,146,205,187,172,162,151,145,142,139,137,135,133,131,130,129,129,129,128,128,127,128,128,129,130,132,133,135,137,139,140,141,144,146,218,195,177,165,154,147,144,141,138,136,134,132,131,130,129,129,128,128,128,128,129,130,131,132,134,136,137,139,140,142,145,148,229,201,183,168,157,149,145,142,140,137,135,133,131,130,130,130,129,128,129,129,130,131,132,133,135,136,138,139,140,142,145,149
 };
 
 static uint8_t _CALIBRATION_SHADING_LS_TL84_B[1024]=
 {
-154,140,128,119,111,104,98,95,90,87,85,82,81,79,79,78,78,79,79,80,81,84,86,89,93,97,102,108,114,124,133,146,149,136,125,116,109,102,97,92,89,85,83,81,79,78,77,76,76,77,78,78,80,81,85,87,91,95,100,105,112,120,130,143,144,132,122,112,105,100,95,91,87,84,81,78,77,76,76,75,75,75,75,77,79,80,82,85,89,93,98,103,109,117,127,139,140,129,119,110,103,98,93,89,85,82,79,77,75,75,73,73,73,73,74,76,76,78,81,84,87,91,95,101,107,114,124,136,137,126,116,108,102,95,92,87,84,80,78,75,74,73,72,72,72,71,72,74,76,77,79,82,85,89,94,99,105,112,122,133,135,123,114,105,100,95,89,86,82,78,76,75,72,72,71,70,70,70,71,72,74,75,78,81,84,88,92,98,104,110,119,130,133,121,112,104,99,93,89,84,81,78,75,73,72,70,69,69,69,69,70,71,72,75,77,79,82,86,91,96,101,108,117,127,130,119,110,103,97,92,87,82,79,76,74,72,71,69,69,68,68,68,68,70,72,73,75,78,81,85,89,95,101,107,115,126,128,118,109,102,96,90,85,82,78,76,73,71,69,69,68,67,67,67,68,69,70,72,75,77,80,84,88,93,99,105,114,124,126,116,108,100,95,89,85,81,77,75,72,70,69,68,67,66,66,66,67,69,69,72,74,76,79,83,88,92,98,104,113,123,126,115,106,99,94,89,84,80,76,74,72,69,68,67,66,66,66,65,66,68,68,71,73,75,78,82,87,91,97,103,111,120,125,115,106,99,92,88,83,79,76,73,71,68,67,66,66,65,65,66,66,67,69,70,72,76,78,82,86,91,96,102,111,120,124,113,105,98,92,87,83,79,75,72,70,69,67,66,65,64,65,65,66,66,68,69,72,75,78,82,85,91,95,102,110,119,123,113,104,97,92,86,83,79,76,72,70,68,66,66,65,64,64,65,66,66,68,69,72,74,77,81,85,90,95,101,109,118,123,113,104,97,92,86,83,79,75,72,69,68,66,66,64,64,64,64,65,66,67,69,72,74,77,81,85,89,95,101,109,118,123,113,104,97,92,86,82,78,75,72,69,68,66,65,64,64,64,64,65,65,67,69,71,74,77,81,85,89,95,101,109,118,123,112,103,97,92,86,82,78,75,72,69,68,66,65,64,64,64,64,65,65,67,68,71,74,77,81,85,89,95,101,108,117,123,112,104,97,92,86,83,78,75,72,70,68,66,65,64,64,64,64,65,66,67,69,72,74,77,81,85,90,95,101,109,118,123,112,104,97,92,87,83,79,75,72,70,68,66,66,65,64,64,65,65,66,67,69,72,74,77,81,85,89,95,101,109,118,123,113,105,98,92,87,83,78,75,72,70,69,67,66,65,65,65,65,66,66,68,69,71,75,78,81,85,90,95,102,110,119,125,114,106,99,93,88,83,79,76,73,71,68,67,66,66,65,65,66,66,67,69,70,72,75,78,81,86,91,96,102,111,120,126,115,106,99,94,89,84,80,76,74,72,69,68,66,65,66,66,66,66,67,68,71,73,75,78,82,86,92,97,103,111,120,127,116,107,100,95,89,85,80,77,75,72,70,69,67,66,66,66,66,67,68,69,72,74,76,79,83,87,92,98,105,112,121,129,118,109,101,96,90,85,82,79,76,73,71,69,68,67,67,67,67,68,69,70,72,75,77,80,84,89,93,99,105,114,124,131,119,110,102,97,91,87,82,79,76,74,72,70,69,69,68,68,68,68,70,72,73,76,79,81,85,89,95,100,107,115,125,133,121,112,104,99,92,88,84,80,77,75,72,72,70,69,68,68,69,70,71,72,74,76,79,82,86,91,95,101,108,117,127,135,124,114,105,100,94,89,85,82,78,76,74,72,72,70,70,70,70,71,71,73,76,78,81,84,88,91,98,103,110,119,129,137,126,116,108,102,95,91,86,83,80,78,75,74,72,71,71,71,72,72,73,75,77,79,81,85,89,94,99,105,111,120,132,140,129,119,110,103,97,92,88,85,82,78,77,76,74,73,72,72,73,74,75,76,79,81,84,87,91,95,101,107,114,124,134,144,132,121,113,105,99,95,90,86,83,81,78,77,75,75,75,74,75,75,76,78,80,82,85,88,92,97,103,109,117,127,138,148,135,125,116,108,102,96,91,88,85,82,80,78,77,76,76,75,76,77,78,80,81,84,87,90,95,99,105,111,120,130,142,153,140,128,119,111,104,99,94,90,87,84,82,80,78,78,78,78,78,78,80,82,83,85,88,92,96,101,107,114,123,134,147
+162,161,159,157,154,152,148,146,144,142,140,139,139,138,138,137,138,139,140,140,142,143,145,148,151,155,159,163,167,170,176,180,162,160,158,156,153,150,148,145,143,141,140,138,138,137,137,137,137,138,139,139,141,142,144,147,150,153,157,161,164,168,173,178,163,160,158,155,152,149,147,144,142,140,139,138,137,137,137,136,137,137,137,138,140,141,143,145,148,151,155,159,162,167,170,175,163,161,158,154,152,149,146,143,141,139,138,137,137,137,136,136,136,136,137,137,139,140,142,144,147,150,154,157,160,165,169,173,164,160,157,154,151,147,145,143,140,139,138,137,137,136,135,135,135,135,136,136,138,139,141,143,146,149,152,156,159,163,168,173,164,160,156,153,149,147,144,142,140,138,137,136,136,135,135,135,134,135,135,136,137,138,140,142,144,147,151,154,158,161,166,171,164,160,156,152,149,146,143,141,139,138,137,136,135,135,134,134,134,134,134,135,136,138,140,141,143,146,149,153,156,160,165,170,164,159,155,151,148,145,142,140,139,138,136,135,134,134,134,133,133,134,134,134,135,137,138,140,142,144,147,151,155,158,163,168,163,159,155,151,147,144,141,140,138,137,136,135,134,133,133,133,133,133,133,134,134,136,137,139,141,144,146,149,153,157,161,167,163,158,154,150,146,143,141,139,138,136,135,134,133,132,132,132,132,132,132,133,134,135,137,138,140,142,145,148,151,155,160,165,162,157,153,149,145,142,140,138,137,136,134,133,133,132,132,131,131,131,132,132,133,134,136,137,139,141,143,146,150,154,158,162,161,157,153,149,145,142,140,138,136,135,134,133,132,131,131,130,130,130,131,132,132,133,135,136,138,140,142,145,149,153,156,161,161,157,152,148,144,142,139,137,136,134,133,132,131,131,130,130,129,130,130,131,132,133,134,135,137,139,141,144,148,151,155,159,160,156,151,148,144,141,138,137,135,134,132,131,131,130,130,129,129,129,130,130,131,132,133,134,136,137,140,143,146,150,153,158,160,155,151,147,143,140,138,136,135,133,131,131,130,130,130,129,129,129,129,130,131,132,132,133,134,137,139,142,145,149,152,156,160,155,150,146,143,140,137,136,134,132,131,130,130,129,129,128,128,128,129,129,130,131,132,132,134,136,138,141,144,147,151,155,161,155,150,146,142,140,137,136,134,132,130,130,130,129,128,128,128,128,128,129,129,131,131,132,133,135,138,141,143,147,150,154,162,155,149,145,142,139,137,135,134,132,130,129,129,129,128,128,128,128,128,128,129,130,131,132,133,135,137,140,143,146,149,152,164,155,147,143,141,138,136,135,133,131,129,128,128,128,128,128,128,128,128,128,128,129,130,131,132,134,136,139,141,143,145,148,165,156,148,143,141,138,136,133,132,131,129,128,128,128,128,128,128,128,127,127,128,128,129,129,131,133,134,137,139,140,141,142,167,157,149,143,141,138,136,133,132,131,129,128,127,127,127,127,127,127,127,126,127,128,128,129,130,132,133,136,138,139,140,140,168,158,150,144,142,138,136,134,132,131,129,129,128,126,126,127,127,126,126,126,126,127,127,128,129,131,133,136,137,138,139,140,168,159,151,144,142,139,136,133,132,131,129,128,128,126,126,126,126,126,126,126,126,127,127,128,129,131,133,135,137,137,138,139,170,160,152,145,141,139,136,133,132,131,129,128,128,127,127,126,126,126,126,126,126,126,127,128,129,131,133,135,136,137,138,138,170,161,153,146,141,139,136,133,132,131,130,128,127,127,127,126,126,126,126,126,126,126,127,128,129,131,133,135,136,136,137,138,173,163,155,147,141,138,136,134,132,131,130,129,128,127,127,126,126,125,126,126,126,126,127,128,130,131,133,135,136,136,137,138,177,167,158,149,141,139,137,134,132,131,130,129,128,127,127,126,126,126,125,125,126,126,127,128,130,131,133,135,136,136,137,138,183,171,161,152,143,140,138,135,133,131,130,129,128,127,127,127,126,126,126,126,126,126,127,128,130,131,133,134,136,136,136,138,190,175,164,155,145,141,139,136,134,132,131,129,128,128,127,127,126,126,126,126,126,127,127,129,130,132,133,135,135,136,137,138,197,181,167,158,148,142,140,137,135,133,131,130,129,128,128,127,126,126,126,126,127,127,128,129,131,132,134,135,135,135,137,138,209,188,171,161,150,144,141,138,136,134,132,130,129,128,128,127,127,126,126,126,127,128,128,130,131,132,134,134,135,135,137,139,218,193,177,163,152,145,141,139,137,134,132,130,129,128,128,128,127,126,126,127,127,128,129,130,132,133,134,134,134,135,137,140
 };
 
 static uint8_t _CALIBRATION_SHADING_LS_A_R[1024]=
 {
-165,149,136,125,115,108,102,97,93,90,87,85,83,81,79,80,80,79,80,82,84,86,88,92,96,100,106,113,120,130,142,157,158,143,132,121,113,106,100,95,91,87,85,83,80,79,78,77,78,78,79,80,82,84,86,89,94,98,103,110,116,126,138,152,153,139,128,118,110,104,97,93,89,85,83,80,79,77,76,76,76,76,77,78,80,82,84,87,91,96,101,107,114,123,134,148,149,136,125,115,108,101,96,91,87,83,81,79,77,76,74,74,74,74,75,76,78,80,83,86,89,94,99,105,111,120,130,143,147,132,122,112,105,99,93,89,85,82,80,77,75,74,73,72,73,72,73,75,76,79,81,84,87,92,96,103,109,116,127,140,143,130,118,110,104,97,92,87,83,80,78,76,74,73,72,71,71,71,73,73,75,77,80,83,86,90,95,101,107,115,125,136,140,127,116,108,101,96,90,86,82,79,77,74,73,71,70,69,69,70,71,72,74,76,78,81,85,89,93,99,105,113,123,134,138,126,115,107,100,94,89,84,80,78,75,72,71,70,70,69,69,69,69,71,73,75,77,79,83,87,92,97,103,111,120,132,136,124,113,105,98,93,87,83,80,77,74,72,70,69,68,68,67,68,69,70,72,73,76,79,82,86,90,96,102,109,119,130,134,121,111,104,97,92,87,83,79,76,73,71,70,68,67,66,66,67,68,69,70,72,75,78,81,85,89,95,101,108,116,128,133,121,111,103,97,91,86,82,78,75,73,70,69,67,66,66,67,66,67,68,69,72,74,77,80,84,89,94,99,106,116,126,132,119,109,102,96,90,85,81,77,74,72,69,68,66,66,66,66,66,66,67,69,71,73,76,79,83,88,92,99,106,114,125,131,118,108,101,95,90,84,80,76,73,71,70,67,66,65,64,65,65,67,67,69,70,72,76,79,82,87,92,98,105,113,124,130,118,107,101,94,89,84,79,77,73,71,69,67,66,65,64,64,65,66,66,68,70,73,76,79,83,86,92,97,104,112,123,129,118,107,101,94,89,84,80,76,72,70,69,67,66,65,64,64,64,66,66,68,70,73,75,78,82,86,92,97,104,112,123,129,117,108,100,93,88,83,80,76,72,70,68,66,66,65,64,64,64,65,66,68,69,72,75,78,82,86,91,97,103,113,123,129,117,108,101,94,88,83,80,76,73,70,69,66,66,65,64,64,64,65,66,68,69,72,75,78,82,86,91,97,104,112,122,129,118,108,101,94,89,83,80,76,73,70,69,67,66,65,64,64,64,66,66,68,70,73,75,78,82,86,92,97,104,113,123,130,118,108,101,94,89,84,80,77,73,71,69,67,66,65,65,64,65,66,66,68,70,72,75,79,83,86,92,98,104,112,123,130,118,108,101,95,90,84,80,76,73,71,70,68,66,66,65,65,65,66,67,69,70,72,76,79,83,87,92,98,105,113,123,132,119,109,102,96,91,85,81,77,74,72,69,68,66,66,66,66,66,66,67,69,71,73,76,80,83,88,93,99,106,114,124,132,121,111,103,97,90,86,82,78,75,73,70,69,67,66,67,66,66,67,68,69,72,74,76,80,84,88,93,100,106,115,126,134,122,111,104,97,92,87,83,79,76,73,71,70,68,67,66,66,67,68,69,70,73,75,77,81,85,89,94,100,107,116,127,136,124,113,105,99,93,87,83,79,76,74,72,70,69,68,68,67,68,69,69,71,73,76,78,82,86,90,96,102,109,118,130,137,125,115,107,100,94,89,85,81,77,75,73,71,70,69,69,68,69,69,71,73,74,76,80,83,87,91,97,103,110,120,132,139,127,117,108,101,96,90,86,82,79,77,74,73,71,70,69,69,70,71,72,73,76,78,80,84,88,93,99,105,113,122,133,143,129,118,111,104,97,92,87,83,80,78,75,74,73,71,71,71,71,72,73,75,76,79,82,86,89,94,100,106,114,124,136,146,132,122,112,105,99,94,89,85,82,79,76,75,74,72,73,72,72,73,74,76,78,80,83,86,91,96,102,109,116,126,139,150,136,125,115,107,101,95,91,87,83,80,78,76,76,74,74,73,74,75,76,77,80,82,85,89,93,98,104,110,119,130,142,153,139,127,118,110,104,97,93,88,85,83,80,78,77,76,76,75,76,76,77,79,81,83,86,90,95,99,106,113,122,133,146,158,142,131,121,112,106,100,95,90,87,84,82,80,79,78,77,77,77,78,80,81,83,86,89,93,97,102,108,116,126,136,150,163,146,135,124,115,108,102,97,93,89,87,84,82,81,79,79,79,79,80,81,83,85,88,91,95,100,104,111,119,129,141,156
+175,172,169,165,160,157,153,150,147,145,143,142,141,141,140,140,141,141,142,144,146,148,151,155,159,165,171,179,188,199,212,228,176,171,168,163,159,155,151,148,146,144,142,141,140,139,139,139,139,140,141,143,145,147,149,153,157,162,168,176,185,195,208,224,177,171,167,161,157,154,150,147,144,142,141,139,139,138,138,138,138,139,140,141,143,145,148,151,155,160,166,173,181,192,204,219,176,170,165,160,156,152,148,145,143,141,140,138,138,137,137,137,137,137,138,140,141,143,146,149,153,158,163,170,179,188,200,214,175,169,163,158,154,150,147,143,141,140,139,138,138,136,136,136,136,136,137,138,140,142,144,147,151,156,161,168,176,185,197,210,174,167,162,157,152,148,145,142,140,139,138,136,136,135,135,134,135,135,136,137,139,141,143,146,149,154,159,165,174,182,193,207,173,166,160,155,151,147,144,141,140,138,137,135,135,134,134,133,134,134,135,136,137,139,141,144,148,152,157,163,171,179,190,203,171,165,159,154,150,146,143,140,138,137,136,135,134,133,133,133,133,133,134,135,136,138,140,143,147,151,156,161,169,177,187,200,170,164,158,153,148,145,142,139,137,136,135,133,133,132,132,132,132,132,133,134,135,137,139,141,145,149,154,159,167,175,185,197,170,163,157,151,147,143,140,138,136,135,134,133,132,132,131,131,131,132,132,133,134,136,138,140,144,148,152,158,165,173,182,194,168,161,155,150,146,142,139,137,136,134,133,131,132,131,131,130,130,131,132,132,133,135,137,139,143,146,151,156,163,170,180,190,166,160,153,148,144,141,139,136,135,134,132,131,131,131,130,129,130,131,131,132,133,134,136,138,141,145,150,155,161,168,176,187,165,158,152,148,144,140,138,136,134,133,132,131,130,130,129,129,129,130,131,131,133,133,135,137,140,144,149,153,159,166,175,184,164,158,152,147,143,140,137,135,134,132,131,131,130,129,129,129,129,130,130,131,132,133,135,137,139,143,147,153,158,165,173,183,163,157,151,147,143,140,137,135,133,132,131,130,130,129,129,128,129,129,130,131,132,133,135,136,139,143,147,152,158,164,172,182,163,157,151,146,142,139,136,134,133,132,131,130,129,129,128,128,129,129,130,130,131,133,134,136,138,142,146,151,157,163,172,182,164,157,151,146,142,139,136,134,133,131,130,129,129,129,128,128,128,129,129,130,131,133,134,136,138,142,146,151,156,163,171,181,164,157,151,146,142,138,135,134,133,131,130,129,129,128,128,128,128,129,129,130,131,132,134,135,138,142,146,151,156,163,171,180,163,157,151,146,142,138,135,134,133,131,130,129,128,128,128,128,128,129,129,130,130,132,134,135,138,142,145,150,156,163,170,180,163,157,151,146,142,137,135,134,132,131,130,128,129,128,128,128,128,129,129,129,130,132,133,135,137,141,146,150,156,162,169,179,163,156,150,146,142,138,134,134,132,131,130,129,128,128,128,128,128,128,129,129,131,132,133,135,137,141,145,150,155,161,167,174,162,155,149,145,141,137,134,133,132,131,130,129,128,128,128,128,128,128,129,130,131,132,133,135,137,141,145,149,154,158,164,171,163,156,148,145,141,137,134,132,132,131,130,129,129,128,128,128,128,129,129,130,131,132,133,134,137,141,144,148,152,156,163,169,165,156,149,145,141,138,135,132,131,131,130,129,129,129,128,128,128,129,129,130,131,132,133,134,137,140,143,147,152,157,163,169,168,158,150,146,141,138,135,132,131,131,130,129,129,129,129,128,128,129,129,130,131,132,132,134,137,140,144,148,153,158,164,170,171,160,151,146,142,139,136,133,131,130,130,129,129,129,129,129,128,129,129,130,131,131,132,135,137,141,144,148,153,158,163,170,174,163,153,147,143,140,137,134,132,130,130,130,129,129,129,129,129,129,129,130,131,132,133,135,138,141,145,149,154,159,164,170,176,165,156,149,145,141,138,136,133,131,130,129,129,129,129,129,129,129,130,130,131,131,134,136,139,142,145,150,154,160,165,172,176,166,158,151,146,143,139,137,134,132,130,129,129,130,130,129,129,129,130,130,131,132,134,137,139,142,146,150,156,160,167,175,177,168,160,153,148,144,141,138,136,134,132,130,130,130,130,129,129,129,130,131,131,133,135,138,140,144,147,152,157,162,171,180,184,173,162,156,150,146,143,140,137,135,133,132,130,130,131,130,130,130,131,131,133,134,136,139,141,145,148,153,158,165,174,184,190,176,165,158,152,148,145,142,139,137,135,133,131,131,131,131,130,130,131,132,133,135,138,140,143,146,150,155,160,167,176,188
 };
 
 static uint8_t _CALIBRATION_SHADING_LS_A_G[1024]=
 {
-157,143,130,121,113,106,100,96,92,89,86,83,82,80,79,79,79,79,80,81,82,85,87,91,95,99,104,110,117,125,137,151,152,138,127,118,110,104,98,93,89,86,84,82,80,79,78,77,77,77,78,79,81,83,85,89,92,97,102,107,114,123,133,146,148,134,124,114,107,101,96,91,88,84,82,79,78,76,76,75,76,76,76,78,79,81,84,86,90,94,99,105,112,120,130,142,144,131,121,112,105,99,94,89,86,82,80,78,76,75,74,73,73,74,75,76,77,79,82,85,89,92,97,102,109,117,127,138,141,128,118,110,103,97,93,88,84,81,79,76,75,73,72,72,72,72,73,74,76,78,80,83,86,91,95,101,107,115,124,135,137,126,116,108,101,96,90,86,83,79,77,75,73,72,71,71,71,71,72,73,75,76,79,82,85,89,93,99,105,112,121,132,134,123,114,106,100,94,89,85,81,78,76,74,72,71,70,69,69,69,70,72,73,75,78,80,84,88,92,98,103,110,119,130,133,121,112,104,98,93,88,83,80,77,75,72,71,69,69,69,68,69,69,70,72,74,76,79,82,86,91,96,102,108,118,128,131,120,110,103,97,92,86,83,79,76,73,72,70,69,68,67,67,68,69,69,71,73,76,78,82,85,89,95,100,107,115,126,130,119,109,102,96,90,86,82,78,75,72,71,69,68,67,66,66,67,67,69,70,72,75,77,80,84,89,94,99,106,115,124,128,117,108,101,95,89,85,81,77,74,72,70,69,67,66,66,66,66,67,68,69,72,74,76,79,83,88,93,98,105,113,123,127,117,107,100,94,89,84,80,76,74,71,69,68,66,66,66,66,66,66,67,69,71,73,76,79,83,87,92,98,104,112,122,127,116,106,100,93,88,83,79,76,73,71,69,67,66,66,65,65,65,66,67,68,70,72,76,79,82,86,92,97,103,111,121,127,115,106,99,93,88,83,79,76,72,70,69,67,66,65,64,64,65,66,66,68,70,72,75,78,82,86,91,96,102,111,121,126,115,106,99,93,87,83,79,76,72,70,68,66,66,65,64,64,64,66,66,68,69,72,75,78,82,85,91,96,102,111,120,126,114,105,99,93,87,83,79,76,72,70,68,66,66,64,64,64,64,65,66,68,69,72,75,78,82,85,90,96,102,110,120,126,114,105,99,93,87,83,79,76,72,70,68,66,66,64,64,64,64,65,66,67,69,72,75,78,82,85,90,96,102,110,120,125,114,105,99,93,87,83,79,76,72,70,68,66,66,65,64,64,64,65,66,68,69,72,75,78,82,85,90,96,102,110,120,126,115,106,99,93,88,83,79,76,73,70,69,67,66,65,64,64,65,66,66,68,70,72,75,78,82,85,91,96,102,111,121,127,116,106,100,93,88,83,79,76,73,71,69,67,66,66,65,65,65,66,66,68,70,72,76,79,82,86,91,97,103,111,121,127,117,107,100,94,89,84,80,76,74,72,69,68,66,66,65,65,66,66,67,69,71,73,76,79,82,87,92,97,104,111,121,128,117,108,101,95,89,85,81,77,75,72,70,69,67,66,66,66,66,66,68,69,71,73,76,79,83,88,92,98,105,112,122,130,118,109,102,96,90,86,82,78,75,72,71,69,68,67,66,66,66,67,69,70,72,74,77,80,84,88,93,99,105,114,124,131,120,110,103,97,91,86,83,79,76,73,72,70,69,68,67,67,68,69,69,71,73,75,78,81,85,89,95,100,107,115,125,134,122,112,104,98,93,88,83,80,77,75,72,71,69,69,68,68,69,69,70,72,74,76,79,82,86,91,95,102,108,117,128,135,123,114,106,100,94,89,85,81,78,76,73,72,71,70,69,69,69,70,72,73,75,77,80,83,87,92,97,103,110,119,130,137,126,116,108,102,96,90,86,83,79,77,75,73,72,71,70,70,71,72,72,74,76,79,82,85,89,93,98,105,111,121,132,141,128,118,110,103,97,92,88,84,81,79,76,75,73,72,72,72,72,73,74,76,78,80,82,86,90,95,100,106,114,124,134,144,131,121,112,106,99,94,89,86,82,80,78,76,75,74,73,73,73,74,76,77,79,82,84,88,92,97,102,108,117,126,138,147,134,123,115,107,101,96,92,88,84,82,79,78,76,76,75,75,76,76,77,79,81,83,86,89,94,99,104,111,119,129,141,151,138,127,118,110,103,98,93,89,86,84,82,79,79,77,76,76,77,78,79,80,82,85,88,92,95,101,106,114,122,132,144,156,142,130,120,113,106,100,96,91,88,86,83,82,80,79,79,78,79,79,81,82,84,87,90,93,98,102,108,116,125,136,149
+156,157,156,154,151,149,147,145,143,141,140,139,139,138,138,138,138,138,139,141,142,144,146,148,151,155,159,164,170,177,185,194,157,156,155,153,151,148,146,144,142,140,139,138,138,137,137,137,137,137,138,140,141,142,144,147,150,153,158,162,168,174,182,191,158,156,155,152,150,147,145,143,141,139,138,137,137,136,136,136,136,136,137,138,140,141,143,145,148,152,156,160,166,172,180,188,159,156,154,151,149,146,144,142,140,138,137,137,136,135,135,135,135,135,136,137,138,140,142,144,147,150,154,158,164,170,177,185,159,156,153,151,148,145,143,140,139,138,137,136,136,135,134,134,134,134,135,136,137,139,140,142,145,149,152,157,162,167,175,183,159,156,152,150,147,144,142,139,138,137,136,135,134,134,133,133,133,133,134,135,136,138,139,141,144,147,151,155,160,165,172,180,158,155,152,149,146,143,141,139,137,136,135,134,133,133,132,132,132,132,133,134,135,136,138,140,143,146,149,153,158,164,171,178,158,154,151,148,145,142,140,138,137,135,134,133,132,132,132,131,131,132,132,133,134,135,137,139,142,145,148,152,157,162,169,176,158,154,151,147,144,141,139,137,136,135,133,132,132,131,131,131,131,131,131,132,133,134,136,138,141,144,147,151,155,161,167,174,157,153,150,146,143,140,138,136,135,134,133,132,131,131,130,130,130,130,131,132,132,133,135,137,140,142,146,149,154,159,165,172,157,152,149,145,142,139,137,135,134,133,132,131,131,130,130,129,129,130,131,131,132,133,134,136,138,141,144,148,152,157,163,170,155,151,147,144,141,139,136,135,134,133,132,131,130,130,129,129,129,130,130,131,131,132,133,135,137,140,143,147,151,155,161,167,154,150,146,143,140,138,136,134,133,132,131,131,130,129,129,129,129,129,130,130,131,132,133,134,136,139,142,146,149,154,159,165,154,150,146,143,140,138,136,134,133,132,131,130,130,129,129,128,128,129,129,130,131,131,133,134,136,139,142,145,149,153,158,164,154,149,146,142,140,137,135,134,133,131,131,130,129,129,128,128,128,129,129,130,130,131,132,134,135,138,141,144,148,152,157,163,153,149,146,142,139,137,135,133,132,131,130,129,129,129,128,128,128,129,129,129,130,131,132,133,135,138,140,144,147,152,157,163,154,150,146,142,139,137,134,133,132,131,130,129,129,128,128,128,128,128,129,129,130,131,132,133,135,137,140,143,147,151,156,162,154,150,146,142,139,136,134,133,132,131,130,129,129,128,128,128,128,128,128,129,130,131,132,133,135,137,140,143,147,151,156,162,154,150,146,142,139,135,133,133,132,131,130,129,129,128,128,128,128,128,128,129,129,131,132,133,134,137,140,143,147,151,156,162,154,149,145,142,139,135,133,133,132,131,130,129,128,128,128,128,128,128,128,129,129,130,131,133,134,137,140,143,146,150,155,160,153,149,145,142,139,135,133,132,132,131,130,129,128,128,128,128,128,128,128,129,130,130,131,132,134,137,139,142,146,149,152,156,152,147,144,141,138,135,133,132,131,131,130,129,128,128,128,128,128,128,128,129,130,130,131,132,134,136,139,142,144,146,148,152,152,147,143,140,138,135,132,131,131,131,130,129,129,128,128,128,128,128,128,129,129,130,131,132,134,136,138,140,142,144,147,150,154,148,143,140,138,135,133,131,131,131,130,129,129,128,128,128,128,128,128,129,130,130,131,131,133,135,137,140,142,145,147,150,156,149,143,141,138,135,133,131,130,131,130,129,129,129,128,128,128,128,129,129,130,130,130,132,133,135,137,140,142,145,148,150,158,151,144,141,138,136,134,132,130,130,130,130,129,129,129,128,128,129,129,129,130,130,130,132,133,136,138,140,142,145,147,149,160,153,146,142,139,137,135,133,131,129,130,130,129,129,129,129,129,129,129,129,129,130,131,132,134,136,138,140,143,145,147,149,161,154,148,143,140,138,136,134,132,130,129,129,129,129,129,129,129,129,129,129,129,130,131,132,134,136,138,141,143,145,147,150,160,154,150,145,142,139,137,135,133,131,130,129,129,129,129,129,129,129,129,129,129,130,131,133,134,136,138,141,143,145,149,152,161,155,151,146,143,140,138,136,134,132,131,130,129,129,129,129,129,128,129,129,130,130,132,133,135,137,139,141,144,146,150,154,166,159,152,148,144,141,139,137,135,133,132,130,129,130,130,129,129,129,129,130,130,131,133,134,136,137,139,142,144,148,152,157,171,162,154,150,146,143,140,138,136,135,133,131,130,130,130,129,129,129,129,130,131,132,133,135,136,138,140,143,145,149,153,160
 };
 
 static uint8_t _CALIBRATION_SHADING_LS_A_B[1024]=
 {
-158,142,129,118,112,106,99,95,91,89,86,83,81,80,78,79,79,78,79,81,82,84,86,89,94,98,102,108,116,124,135,148,151,137,126,116,109,103,97,93,89,86,83,82,79,78,77,76,77,77,78,79,81,82,85,88,91,95,101,106,113,121,132,144,147,133,122,113,106,101,95,91,87,84,82,79,78,76,76,75,75,76,76,77,78,81,83,86,89,94,98,104,111,118,128,141,142,130,119,111,105,99,93,89,86,82,79,77,75,75,74,73,73,74,75,76,77,78,82,84,88,91,97,102,108,116,126,137,139,126,117,109,102,96,92,88,84,80,78,76,75,73,72,71,72,72,73,74,76,78,80,83,85,90,95,100,106,114,123,134,136,124,114,107,101,95,90,85,83,79,76,75,73,72,71,71,70,71,72,72,74,76,79,81,84,89,93,97,105,111,121,131,133,122,112,105,100,93,89,85,81,78,76,73,72,71,69,69,69,69,70,72,73,75,77,80,83,87,92,97,102,109,118,130,132,120,111,103,98,93,87,83,79,77,75,72,71,69,69,68,68,68,69,70,72,74,75,78,81,85,90,95,101,108,117,127,130,119,109,102,96,91,86,82,79,76,73,72,70,69,68,67,67,67,68,69,71,72,75,78,81,85,89,94,100,106,115,125,129,118,108,101,95,89,85,81,77,75,72,70,70,68,67,66,66,66,67,69,69,71,74,77,80,84,89,93,98,105,113,123,128,116,107,100,94,89,84,80,77,74,72,69,68,67,66,66,66,65,66,68,68,71,73,76,79,83,87,92,98,104,112,122,126,116,106,99,93,88,83,79,76,73,71,69,68,66,66,65,65,66,66,67,69,70,72,76,78,82,86,91,97,103,111,121,126,115,106,99,92,87,83,79,75,72,71,69,67,65,65,65,65,65,66,67,68,70,72,75,78,81,85,91,96,102,111,121,125,114,105,98,92,87,82,78,76,72,70,68,66,66,65,64,64,65,65,66,68,69,72,74,77,82,85,90,95,101,110,120,124,113,105,98,92,86,83,79,75,72,70,68,66,66,64,64,64,64,65,66,68,69,72,74,77,81,85,90,95,101,109,118,123,113,104,97,92,86,82,79,76,72,70,68,66,65,64,64,64,64,65,66,67,69,71,74,77,81,85,90,95,101,109,118,123,112,104,97,92,86,83,78,75,72,69,68,66,66,64,64,64,64,65,65,67,69,71,74,77,81,85,89,95,101,109,118,122,112,105,98,92,87,82,79,75,72,70,68,66,66,65,64,64,64,65,66,67,69,72,74,77,81,85,90,95,101,109,119,123,113,105,99,92,87,82,78,76,72,70,68,66,66,65,64,64,65,65,66,68,69,71,75,78,81,85,90,96,101,110,120,124,114,106,99,92,87,83,79,75,72,71,69,67,65,65,65,65,65,66,66,68,70,72,75,78,82,85,91,96,102,111,120,126,115,105,99,93,88,83,79,75,73,71,68,67,66,66,65,65,66,65,67,69,70,72,76,79,82,86,91,97,103,111,121,127,116,106,100,94,89,84,80,76,74,72,69,68,66,66,66,66,65,66,68,69,71,73,75,79,83,87,91,98,104,112,121,128,117,108,101,95,89,85,81,77,75,72,70,69,67,66,66,66,66,67,69,69,72,74,76,79,83,88,92,98,104,113,123,129,119,109,102,96,90,85,82,78,75,73,71,69,69,68,67,67,67,68,69,71,72,75,77,81,85,88,94,99,106,114,124,131,120,111,103,97,92,87,83,79,76,74,72,70,69,69,68,68,68,68,70,72,73,75,79,82,85,90,95,101,108,116,127,133,123,112,105,99,93,89,84,80,78,76,73,72,70,69,68,68,69,70,71,72,74,77,79,83,87,92,96,102,109,118,129,137,125,115,106,100,94,89,85,82,78,76,74,73,72,71,70,70,70,71,72,74,75,78,81,84,89,92,98,105,111,121,131,139,126,117,109,102,96,91,87,83,80,78,75,74,73,71,72,72,71,72,73,75,77,79,82,85,90,95,100,106,113,122,134,142,129,119,110,104,98,93,89,85,82,79,77,75,75,73,73,73,73,74,75,76,79,81,84,87,92,96,101,108,115,125,136,146,133,122,113,106,100,95,90,86,83,81,78,77,76,75,75,75,75,76,77,78,80,82,85,88,93,98,104,110,118,127,139,150,136,126,116,109,102,97,92,89,85,82,81,79,78,77,76,76,76,77,79,80,82,85,87,91,95,100,106,113,121,130,143,153,139,129,119,111,105,98,94,90,87,85,82,81,79,78,78,78,78,79,80,81,84,86,89,93,97,102,108,116,124,134,146
+153,154,154,153,150,148,146,143,141,140,138,137,137,137,137,137,138,138,139,141,142,144,146,149,153,157,161,165,170,175,182,188,154,153,154,152,150,147,145,142,141,139,138,137,137,136,137,137,137,138,139,140,141,143,145,148,151,155,159,163,168,173,179,186,155,154,154,151,149,146,144,142,140,138,137,137,136,136,136,136,136,137,138,139,141,142,144,147,150,153,157,161,166,171,176,183,155,154,153,150,148,146,143,141,139,137,137,136,135,135,135,135,135,136,136,138,139,141,143,145,149,152,155,159,164,168,174,181,156,154,152,150,147,145,143,140,139,137,137,136,135,134,134,134,134,135,135,137,138,140,142,145,147,151,154,158,162,167,172,179,156,154,152,149,146,144,142,140,138,137,136,135,134,134,134,133,134,134,135,136,137,139,141,143,146,149,153,157,161,165,171,177,157,154,151,148,145,143,141,139,137,136,135,134,134,133,133,133,133,134,134,135,137,138,141,143,145,148,151,155,159,164,169,175,156,153,150,148,145,142,140,138,137,136,134,134,133,132,132,132,132,133,133,134,135,137,139,141,144,147,150,153,157,162,167,173,156,152,150,147,144,141,139,137,136,135,134,133,132,132,132,132,132,132,132,133,134,136,138,140,142,146,149,152,156,160,165,172,156,152,149,146,143,140,138,136,135,134,133,132,132,131,131,131,131,131,132,133,134,135,137,139,141,144,147,150,155,159,164,170,155,151,148,145,142,139,137,136,135,134,132,131,131,130,131,130,130,131,131,132,133,135,136,138,140,143,146,148,152,157,162,168,154,150,146,144,141,139,137,135,134,133,132,131,130,130,130,129,130,131,131,132,132,134,135,137,139,142,144,147,151,154,159,165,152,149,146,143,140,138,136,134,133,132,131,130,130,129,129,129,129,129,130,131,132,133,135,136,138,140,143,146,150,153,158,163,152,148,145,142,140,137,135,134,133,132,131,130,130,129,129,129,128,129,130,131,132,133,134,136,137,140,142,145,149,152,156,161,152,148,145,142,139,137,135,134,133,132,130,130,129,129,129,128,128,129,129,130,131,132,133,135,136,139,142,145,148,151,156,160,152,148,145,142,139,137,135,134,132,131,130,129,129,128,128,128,128,128,129,130,131,132,133,134,136,138,141,144,148,150,155,159,151,148,145,142,139,136,135,133,132,131,130,129,129,128,128,128,128,129,129,129,131,132,132,133,135,138,141,144,147,150,154,158,151,148,145,141,139,136,134,134,132,131,130,129,128,128,128,128,128,128,129,129,130,131,132,133,135,138,140,143,147,150,154,158,151,147,145,142,139,135,134,133,132,131,130,129,129,128,128,128,128,128,129,129,130,131,132,133,135,137,140,143,146,149,153,157,151,148,144,141,138,135,134,133,132,131,130,129,128,128,128,128,128,128,128,129,130,130,131,133,134,137,140,143,146,148,152,156,150,146,144,141,138,135,133,133,132,131,130,129,128,128,128,128,128,128,129,129,130,131,131,132,134,137,139,142,145,147,149,151,148,145,142,140,137,135,133,132,132,131,130,129,129,128,128,128,128,128,128,129,129,130,131,132,133,136,139,141,143,144,145,147,148,144,141,139,137,135,133,132,132,131,130,129,129,128,128,128,128,128,128,129,129,130,130,131,133,135,137,139,141,142,143,144,149,145,141,139,137,135,133,131,131,131,130,129,129,128,128,128,128,128,128,129,129,130,130,131,132,135,137,138,140,141,143,144,150,145,141,139,137,135,133,131,130,130,130,129,128,128,128,128,128,128,128,128,129,129,129,130,132,134,136,138,140,141,143,144,151,147,142,140,137,135,133,131,130,130,130,129,129,128,128,128,128,128,128,128,129,128,129,130,132,134,136,138,140,141,142,143,153,148,143,140,137,135,134,132,130,129,129,129,128,128,128,128,128,128,128,128,128,129,129,131,133,135,136,138,140,141,142,142,154,149,145,141,138,136,135,133,131,129,129,129,128,128,129,128,128,128,128,128,128,128,129,131,133,135,136,138,140,141,142,143,154,149,146,142,139,137,136,134,132,130,129,128,128,128,128,128,128,128,128,128,128,129,130,132,133,135,136,138,140,141,142,144,155,151,147,143,140,138,136,134,133,131,129,128,128,128,128,128,127,127,127,128,128,129,130,132,134,135,137,138,140,141,144,146,158,153,148,145,141,139,137,135,134,132,130,129,128,128,128,127,127,127,127,128,128,129,131,132,134,135,137,138,140,142,145,147,161,155,150,146,143,140,138,136,134,132,131,129,128,128,128,127,127,127,127,127,128,129,131,133,134,136,137,139,140,143,146,149
 };
 
 //aisp_lsc_ctl_t
 static uint32_t _CALIBRATION_LENS_SHADING_CTL[4] =
 {
     2, //mesh shading split mode 0:64x64 1: 32x64 2:32x32
-    1, //mesh lut normalize select 0: 128 1:64 2:32 3:16
+    0, //mesh lut normalize select 0: 128 1:64 2:32 3:16
     32, //mesh hori-node numbers
     32, //mesh vert-node numbers
 };
 
 static uint16_t _CALIBRATION_GAMMA[129]=
 {
-0,86,134,169,198,223,245,265,283,300,316,331,346,359,372,385,397,409,420,431,441,451,461,471,481,490,499,508,516,525,533,541,549,557,565,572,580,587,594,601,608,615,622,628,635,641,648,654,660,667,673,679,685,691,697,702,708,714,719,725,730,736,741,747,752,757,762,767,773,778,783,788,793,797,802,807,812,817,821,826,831,835,840,844,849,853,858,862,867,871,875,880,884,888,892,897,901,905,909,913,917,921,925,929,933,937,941,945,949,953,957,960,964,968,972,976,979,983,987,990,994,998,1001,1005,1009,1012,1016,1019,1023
+0,86,134,169,198,223,245,265,283,300,316,331,346,359,372,385,397,409,420,431,441,451,461,471,480,490,499,508,516,525,533,541,549,557,564,572,579,587,594,601,608,615,622,628,635,641,648,654,660,667,673,679,685,691,696,702,708,714,719,725,730,736,741,746,752,757,762,767,772,778,783,788,792,797,802,807,812,816,821,826,830,835,840,844,849,853,858,862,866,871,875,879,884,888,892,896,901,905,909,913,917,921,925,929,933,937,941,945,949,953,957,960,964,968,972,975,979,983,987,990,994,998,1001,1005,1008,1012,1016,1019,1023
 };
 
 static int32_t _CALIBRATION_CCM[201]=
 {
 6,
-2856,418,88,7942,8063,437,8140,22,7920,506,
-4000,533,8146,7962,8061,445,8134,22,7960,465,
-4100,534,8001,8106,8045,474,8121,23,7984,441,
-5000,488,8087,8066,8089,459,8092,12,7967,469,
-6500,489,8019,8133,8095,470,8076,11,7950,487,
-7500,488,8011,8142,8099,469,8073,7,7969,472,
+2856,368,8168,8104,8038,445,8157,27,7800,621,
+4000,433,8088,8119,8050,463,8128,18,7937,493,
+4100,433,8088,8119,8050,463,8128,18,7937,493,
+5000,457,8088,8095,8079,491,8071,16,7966,465,
+6500,472,8056,8112,8091,506,8044,16,7974,457,
+7500,484,8049,8108,8097,517,8026,12,7992,443,
 0,0,0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0,0,0,
@@ -1472,97 +1512,97 @@ static int32_t _CALIBRATION_CCM[201]=
 
 static int8_t _CALIBRATION_CAC_RX[1024]=
 {
-0,0,1,1,1,2,2,2,2,2,2,2,1,1,1,0,0,-1,-1,-1,-2,-2,-2,-2,-2,-2,-2,-1,-1,-1,0,0,0,0,1,1,2,2,2,2,2,2,2,2,1,1,1,0,0,-1,-1,-1,-2,-2,-2,-2,-2,-2,-2,-2,-1,-1,0,0,0,1,1,2,2,2,2,2,2,2,2,2,2,1,1,0,0,-1,-1,-2,-2,-2,-2,-2,-2,-2,-2,-2,-1,-1,-1,0,0,1,1,2,2,2,2,2,2,2,2,2,2,1,1,0,0,-1,-1,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-1,-1,0,0,1,1,2,2,2,3,3,3,3,2,2,2,1,1,0,0,-1,-1,-2,-2,-2,-3,-3,-3,-3,-2,-2,-2,-1,-1,0,0,1,2,2,2,3,3,3,3,3,2,2,2,1,1,0,0,-1,-1,-2,-2,-2,-3,-3,-3,-3,-3,-2,-2,-2,-1,0,1,1,2,2,2,3,3,3,3,3,3,2,2,1,1,0,0,-1,-1,-2,-2,-3,-3,-3,-3,-3,-3,-2,-2,-2,-1,-1,1,1,2,2,3,3,3,3,3,3,3,2,2,2,1,0,0,-1,-2,-2,-2,-3,-3,-3,-3,-3,-3,-3,-2,-2,-1,-1,1,1,2,2,3,3,3,3,3,3,3,3,2,2,1,0,0,-1,-2,-2,-3,-3,-3,-3,-3,-3,-3,-3,-2,-2,-1,-1,1,2,2,2,3,3,3,3,3,3,3,3,2,2,1,0,0,-1,-2,-2,-3,-3,-3,-3,-3,-3,-3,-3,-2,-2,-2,-1,1,2,2,3,3,3,3,3,3,3,3,3,2,2,1,0,0,-1,-2,-2,-3,-3,-3,-3,-3,-3,-3,-3,-3,-2,-2,-1,1,2,2,3,3,3,3,3,3,3,3,3,2,2,1,0,0,-1,-2,-2,-3,-3,-3,-3,-3,-3,-3,-3,-3,-2,-2,-1,1,2,2,3,3,3,3,3,3,3,3,3,3,2,1,1,-1,-1,-2,-3,-3,-3,-3,-3,-3,-3,-3,-3,-3,-2,-2,-1,1,2,2,3,3,3,3,4,4,3,3,3,3,2,2,1,-1,-2,-2,-3,-3,-3,-3,-4,-4,-3,-3,-3,-3,-2,-2,-1,1,2,2,3,3,3,4,4,4,3,3,3,3,2,2,1,-1,-2,-2,-3,-3,-3,-3,-4,-4,-3,-3,-3,-3,-2,-2,-1,1,2,2,3,3,3,4,4,4,4,3,3,3,2,2,1,-1,-2,-2,-3,-3,-3,-4,-4,-4,-4,-3,-3,-3,-2,-2,-1,1,2,2,3,3,3,4,4,4,4,3,3,3,2,2,1,-1,-2,-2,-3,-3,-3,-4,-4,-4,-4,-3,-3,-3,-2,-2,-1,1,2,2,3,3,3,3,4,4,3,3,3,3,2,2,1,-1,-2,-2,-3,-3,-3,-3,-4,-4,-3,-3,-3,-3,-2,-2,-1,1,2,2,3,3,3,3,4,4,3,3,3,3,2,2,1,-1,-2,-2,-3,-3,-3,-3,-4,-4,-3,-3,-3,-3,-2,-2,-1,1,2,2,3,3,3,3,3,3,3,3,3,3,2,1,0,-1,-1,-2,-3,-3,-3,-3,-3,-3,-3,-3,-3,-3,-2,-2,-1,1,2,2,3,3,3,3,3,3,3,3,3,2,2,1,0,0,-1,-2,-2,-3,-3,-3,-3,-3,-3,-3,-3,-3,-2,-2,-1,1,2,2,3,3,3,3,3,3,3,3,3,2,2,1,0,0,-1,-2,-2,-3,-3,-3,-3,-3,-3,-3,-3,-3,-2,-2,-1,1,2,2,2,3,3,3,3,3,3,3,3,2,2,1,0,0,-1,-2,-2,-3,-3,-3,-3,-3,-3,-3,-3,-2,-2,-1,-1,1,1,2,2,3,3,3,3,3,3,3,3,2,2,1,0,0,-1,-2,-2,-3,-3,-3,-3,-3,-3,-3,-3,-2,-2,-1,-1,1,1,2,2,3,3,3,3,3,3,3,2,2,2,1,0,0,-1,-2,-2,-2,-3,-3,-3,-3,-3,-3,-3,-2,-2,-1,-1,1,1,2,2,2,3,3,3,3,3,3,2,2,1,1,0,0,-1,-1,-2,-2,-3,-3,-3,-3,-3,-3,-2,-2,-2,-1,-1,0,1,2,2,2,3,3,3,3,3,2,2,2,1,1,0,0,-1,-1,-2,-2,-2,-3,-3,-3,-3,-3,-2,-2,-2,-1,0,0,1,1,2,2,2,3,3,3,3,2,2,2,1,1,0,0,-1,-1,-2,-2,-2,-3,-3,-3,-3,-2,-2,-2,-1,-1,0,0,1,1,2,2,2,2,2,2,2,2,2,2,1,1,0,0,-1,-1,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-1,-1,0,0,1,1,1,2,2,2,2,2,2,2,2,1,1,1,0,0,-1,-1,-2,-2,-2,-2,-2,-2,-2,-2,-2,-1,-1,-1,0,0,0,1,1,2,2,2,2,2,2,2,2,1,1,1,0,0,-1,-1,-1,-2,-2,-2,-2,-2,-2,-2,-2,-1,-1,0,0,0,0,1,1,1,2,2,2,2,2,2,2,1,1,1,0,0,-1,-1,-1,-2,-2,-2,-2,-2,-2,-2,-1,-1,-1,0,0
+14,9,5,1,-2,-4,-6,-7,-8,-8,-8,-7,-6,-4,-2,-1,1,3,5,6,7,8,8,8,7,5,4,1,-2,-6,-11,-16,12,7,3,0,-3,-6,-7,-8,-9,-9,-8,-7,-6,-4,-3,-1,1,3,5,7,8,9,9,9,8,7,5,2,-1,-5,-9,-14,11,6,2,-2,-5,-7,-8,-9,-10,-10,-9,-8,-7,-5,-3,-1,2,4,6,7,9,9,10,10,9,8,6,4,0,-3,-8,-13,9,5,0,-3,-6,-8,-10,-10,-11,-11,-10,-9,-7,-5,-3,-1,2,4,6,8,9,10,11,11,10,9,7,5,2,-2,-6,-11,8,3,-1,-4,-7,-9,-11,-11,-12,-11,-11,-9,-8,-5,-3,-1,2,4,6,8,10,11,12,12,11,10,8,6,3,-1,-5,-10,7,2,-2,-5,-8,-10,-12,-12,-13,-12,-11,-10,-8,-6,-3,-1,2,4,7,9,10,12,12,13,12,11,9,7,4,0,-4,-9,6,1,-3,-6,-9,-11,-13,-13,-13,-13,-12,-10,-8,-6,-4,-1,2,5,7,9,11,12,13,13,13,12,10,8,5,1,-3,-8,5,0,-4,-7,-10,-12,-13,-14,-14,-14,-13,-11,-9,-6,-4,-1,2,5,7,10,12,13,14,14,14,13,11,9,6,2,-2,-7,4,-1,-5,-8,-11,-13,-14,-15,-15,-14,-13,-11,-9,-7,-4,-1,2,5,8,10,12,14,15,15,15,14,12,10,7,3,-1,-6,3,-2,-6,-9,-12,-14,-15,-16,-16,-15,-14,-12,-10,-7,-4,-1,2,5,8,11,13,14,15,16,15,15,13,11,8,4,0,-5,2,-3,-7,-10,-12,-14,-16,-16,-16,-15,-14,-12,-10,-7,-4,-1,2,5,8,11,13,15,16,16,16,15,14,11,9,5,1,-4,2,-3,-7,-10,-13,-15,-16,-17,-17,-16,-15,-13,-10,-7,-4,-1,2,5,8,11,13,15,16,17,17,16,14,12,9,6,1,-3,1,-4,-8,-11,-14,-15,-17,-17,-17,-16,-15,-13,-10,-7,-4,-1,2,5,8,11,14,16,17,17,17,16,15,13,10,6,2,-3,0,-4,-8,-11,-14,-16,-17,-18,-17,-17,-15,-13,-10,-7,-4,-1,2,5,8,11,14,16,17,18,18,17,15,13,10,7,2,-2,0,-5,-9,-12,-14,-16,-17,-18,-18,-17,-15,-13,-10,-7,-4,-1,2,5,8,12,14,16,17,18,18,17,16,13,11,7,3,-2,0,-5,-9,-12,-15,-16,-18,-18,-18,-17,-15,-13,-10,-7,-3,0,1,5,8,12,14,16,18,18,18,17,16,14,11,7,3,-2,0,-5,-9,-12,-15,-17,-18,-18,-18,-17,-16,-13,-10,-7,-3,1,0,4,8,12,14,16,18,18,18,17,16,14,11,7,3,-2,0,-5,-9,-12,-15,-17,-18,-18,-18,-17,-16,-13,-10,-7,-2,3,-1,4,8,12,14,16,18,18,18,17,16,14,11,7,3,-2,0,-5,-9,-12,-15,-17,-18,-18,-18,-17,-16,-13,-10,-7,-3,0,0,4,8,12,14,16,18,18,18,17,16,14,11,7,3,-2,0,-5,-9,-12,-15,-16,-18,-18,-18,-17,-15,-13,-10,-7,-3,0,1,5,8,12,14,16,18,18,18,17,16,14,11,7,3,-2,0,-5,-9,-12,-14,-16,-17,-18,-18,-17,-15,-13,-10,-7,-4,-1,2,5,8,12,14,16,17,18,18,17,16,13,11,7,3,-2,0,-4,-8,-11,-14,-16,-17,-18,-17,-17,-15,-13,-10,-7,-4,-1,2,5,8,11,14,16,17,18,18,17,15,13,10,7,2,-2,1,-4,-8,-11,-14,-15,-17,-17,-17,-16,-15,-13,-10,-7,-4,-1,2,5,8,11,14,15,17,17,17,16,15,13,10,6,2,-3,2,-3,-7,-10,-13,-15,-16,-17,-17,-16,-14,-13,-10,-7,-4,-1,2,5,8,11,13,15,16,17,17,16,14,12,9,6,1,-3,2,-2,-6,-10,-12,-14,-16,-16,-16,-15,-14,-12,-10,-7,-4,-1,2,5,8,11,13,15,16,16,16,15,14,11,9,5,1,-4,3,-2,-6,-9,-12,-14,-15,-16,-16,-15,-14,-12,-10,-7,-4,-1,2,5,8,10,13,14,15,16,15,15,13,11,8,4,0,-5,4,-1,-5,-8,-11,-13,-14,-15,-15,-14,-13,-11,-9,-7,-4,-1,2,5,8,10,12,14,15,15,15,14,12,10,7,3,-1,-6,5,0,-4,-7,-10,-12,-13,-14,-14,-14,-13,-11,-9,-6,-4,-1,2,5,7,10,12,13,14,14,14,13,11,9,6,2,-2,-7,6,1,-3,-6,-9,-11,-13,-13,-13,-13,-12,-10,-8,-6,-4,-1,2,5,7,9,11,12,13,13,13,12,10,8,5,1,-3,-8,7,2,-2,-5,-8,-10,-12,-12,-13,-12,-11,-10,-8,-6,-3,-1,2,4,7,9,10,12,12,13,12,11,9,7,4,0,-4,-9,8,3,-1,-4,-7,-9,-11,-11,-12,-11,-11,-9,-8,-5,-3,-1,2,4,6,8,10,11,12,12,11,10,8,6,3,-1,-5,-10,9,4,0,-3,-6,-8,-10,-11,-11,-11,-10,-9,-7,-5,-3,-1,2,4,6,8,9,10,11,11,10,9,7,5,2,-2,-6,-11
 };
 
 static int8_t _CALIBRATION_CAC_RY[1024]=
 {
-0,0,0,1,1,1,2,2,2,3,3,3,3,3,4,4,4,4,3,3,3,3,3,2,2,2,1,1,1,0,0,0,0,0,1,1,1,1,2,2,2,3,3,3,3,3,4,4,4,4,3,3,3,3,3,2,2,2,1,1,1,1,0,0,0,0,1,1,1,2,2,2,2,3,3,3,3,3,4,4,4,4,3,3,3,3,3,2,2,2,2,1,1,1,0,0,0,0,1,1,1,2,2,2,2,3,3,3,3,3,4,4,4,3,3,3,3,3,3,2,2,2,1,1,1,1,0,0,0,0,1,1,1,1,2,2,2,3,3,3,3,3,3,3,3,3,3,3,3,3,2,2,2,2,1,1,1,1,0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3,3,3,3,3,3,3,3,3,2,2,2,2,1,1,1,1,0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3,3,3,3,3,3,3,3,3,2,2,2,2,1,1,1,1,0,0,0,0,1,1,1,1,1,2,2,2,2,3,3,3,3,3,3,3,3,3,3,2,2,2,2,1,1,1,1,1,0,0,0,0,1,1,1,1,1,2,2,2,2,2,3,3,3,3,3,3,3,3,2,2,2,2,2,1,1,1,1,1,0,0,0,0,1,1,1,1,1,1,2,2,2,2,2,3,3,3,3,3,3,2,2,2,2,2,1,1,1,1,1,1,0,0,0,0,0,1,1,1,1,1,1,2,2,2,2,2,2,3,3,2,2,2,2,2,2,1,1,1,1,1,1,0,0,0,0,0,0,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,2,2,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,2,2,2,2,2,2,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,2,2,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-1,-1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-1,-1,-1,-1,-1,-1,-1,-1,-1,-2,-2,-1,-1,-1,-1,-1,-1,-1,-1,-1,0,0,0,0,0,0,0,0,0,0,-1,-1,-1,-1,-1,-1,-1,-1,-1,-2,-2,-2,-2,-2,-2,-1,-1,-1,-1,-1,-1,-1,-1,-1,0,0,0,0,0,0,0,-1,-1,-1,-1,-1,-1,-1,-1,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-1,-1,-1,-1,-1,-1,-1,-1,0,0,0,0,0,0,-1,-1,-1,-1,-1,-1,-2,-2,-2,-2,-2,-2,-3,-3,-2,-2,-2,-2,-2,-2,-1,-1,-1,-1,-1,-1,0,0,0,0,0,-1,-1,-1,-1,-1,-1,-2,-2,-2,-2,-2,-3,-3,-3,-3,-3,-3,-2,-2,-2,-2,-2,-1,-1,-1,-1,-1,-1,0,0,0,0,-1,-1,-1,-1,-1,-2,-2,-2,-2,-2,-3,-3,-3,-3,-3,-3,-3,-3,-2,-2,-2,-2,-2,-1,-1,-1,-1,-1,0,0,0,0,-1,-1,-1,-1,-2,-2,-2,-2,-2,-3,-3,-3,-3,-3,-3,-3,-3,-3,-3,-2,-2,-2,-2,-1,-1,-1,-1,-1,0,0,0,0,-1,-1,-1,-1,-2,-2,-2,-2,-3,-3,-3,-3,-3,-3,-3,-3,-3,-3,-3,-3,-2,-2,-2,-2,-1,-1,-1,-1,0,0,0,0,-1,-1,-1,-1,-2,-2,-2,-2,-3,-3,-3,-3,-3,-3,-3,-3,-3,-3,-3,-3,-2,-2,-2,-2,-1,-1,-1,-1,0,0,0,0,-1,-1,-1,-1,-2,-2,-2,-3,-3,-3,-3,-3,-3,-4,-4,-3,-3,-3,-3,-3,-3,-2,-2,-2,-1,-1,-1,-1,0,0,0,0,-1,-1,-1,-2,-2,-2,-2,-3,-3,-3,-3,-3,-4,-4,-4,-4,-3,-3,-3,-3,-3,-2,-2,-2,-2,-1,-1,-1,0,0,0,0,-1,-1,-1,-2,-2,-2,-2,-3,-3,-3,-3,-3,-4,-4,-4,-4,-3,-3,-3,-3,-3,-2,-2,-2,-2,-1,-1,-1,0,0,0,0,-1,-1,-1,-1,-2,-2,-2,-3,-3,-3,-3,-3,-4,-4,-4,-4,-3,-3,-3,-3,-3,-2,-2,-2,-1,-1,-1,-1,0,0,0,0,0,-1,-1,-1,-2,-2,-2,-3,-3,-3,-3,-3,-4,-4,-4,-4,-3,-3,-3,-3,-3,-2,-2,-2,-1,-1,-1,0,0,0
+9,6,3,1,-2,-4,-6,-8,-10,-12,-14,-15,-16,-17,-17,-18,-18,-17,-17,-16,-14,-13,-11,-10,-8,-5,-3,-1,2,4,7,10,7,5,2,0,-3,-5,-7,-9,-11,-13,-14,-15,-17,-17,-18,-18,-18,-18,-17,-16,-15,-14,-12,-10,-8,-6,-4,-2,1,3,6,8,6,3,1,-1,-3,-6,-8,-10,-11,-13,-15,-16,-17,-18,-18,-18,-18,-18,-17,-16,-15,-14,-12,-11,-9,-7,-5,-3,0,2,4,7,5,3,0,-2,-4,-6,-8,-10,-12,-13,-15,-16,-17,-18,-18,-18,-18,-18,-17,-17,-15,-14,-13,-11,-9,-7,-5,-3,-1,1,3,6,4,2,0,-3,-5,-6,-8,-10,-12,-13,-15,-16,-17,-17,-18,-18,-18,-18,-17,-16,-15,-14,-13,-11,-9,-8,-6,-4,-2,0,3,5,3,1,-1,-3,-5,-7,-8,-10,-12,-13,-14,-15,-16,-17,-18,-18,-18,-17,-17,-16,-15,-14,-13,-11,-9,-8,-6,-4,-2,0,2,4,2,0,-1,-3,-5,-7,-8,-10,-11,-13,-14,-15,-16,-16,-17,-17,-17,-17,-16,-16,-15,-13,-12,-11,-9,-8,-6,-4,-3,-1,1,3,2,0,-2,-3,-5,-7,-8,-10,-11,-12,-13,-14,-15,-16,-16,-16,-16,-16,-15,-15,-14,-13,-12,-10,-9,-8,-6,-4,-3,-1,1,2,1,0,-2,-3,-5,-6,-8,-9,-10,-12,-13,-13,-14,-15,-15,-15,-15,-15,-14,-14,-13,-12,-11,-10,-9,-7,-6,-4,-3,-1,0,2,1,-1,-2,-3,-5,-6,-7,-8,-10,-11,-12,-12,-13,-13,-14,-14,-14,-14,-13,-13,-12,-11,-10,-9,-8,-7,-5,-4,-3,-1,0,1,1,-1,-2,-3,-4,-6,-7,-8,-9,-10,-10,-11,-12,-12,-12,-12,-12,-12,-12,-12,-11,-10,-9,-8,-7,-6,-5,-4,-3,-1,0,1,0,-1,-2,-3,-4,-5,-6,-7,-8,-9,-9,-10,-10,-11,-11,-11,-11,-11,-10,-10,-10,-9,-8,-7,-6,-6,-5,-3,-2,-1,0,1,0,-1,-2,-3,-3,-4,-5,-6,-7,-7,-8,-8,-9,-9,-9,-9,-9,-9,-9,-9,-8,-8,-7,-6,-6,-5,-4,-3,-2,-1,0,1,0,-1,-1,-2,-3,-3,-4,-5,-5,-6,-6,-7,-7,-7,-7,-6,-7,-7,-7,-7,-7,-6,-6,-5,-5,-4,-3,-3,-2,-1,0,0,0,-1,-1,-2,-2,-3,-3,-4,-4,-5,-5,-5,-5,-5,-5,-4,-4,-5,-5,-5,-5,-5,-4,-4,-3,-3,-2,-2,-1,-1,0,0,0,0,-1,-1,-1,-2,-2,-2,-3,-3,-3,-3,-4,-3,-3,-1,-2,-3,-3,-4,-3,-3,-3,-3,-2,-2,-2,-1,-1,-1,0,0,0,0,0,-1,-1,-1,-1,-1,-1,-2,-2,-2,-2,-2,-1,1,0,-1,-2,-2,-2,-2,-1,-1,-1,-1,-1,-1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,2,2,2,2,2,1,-1,0,1,2,2,2,2,2,1,1,1,1,1,0,0,0,0,0,0,1,1,1,2,2,2,3,3,3,3,4,3,3,2,2,3,3,4,3,3,3,3,2,2,2,1,1,1,0,0,0,1,1,2,2,3,3,4,4,5,5,5,5,5,5,4,4,5,5,5,5,5,4,4,3,3,2,2,1,1,0,0,0,1,1,2,3,4,4,5,5,6,6,7,7,7,7,6,7,7,7,7,7,6,6,5,5,4,3,3,2,1,0,0,0,1,2,3,3,4,5,6,7,7,8,8,9,9,9,9,9,9,9,9,8,8,7,6,6,5,4,3,2,1,0,-1,0,1,2,3,4,5,6,7,8,9,9,10,10,11,11,11,11,11,10,10,10,9,8,7,6,6,5,4,2,1,0,-1,-1,1,2,3,4,6,7,8,9,10,11,11,12,12,12,12,12,12,12,12,11,10,9,8,7,6,5,4,3,1,0,-1,-1,1,2,3,5,6,7,8,10,11,12,12,13,14,14,14,14,14,13,13,12,11,10,9,8,7,5,4,3,1,0,-1,-1,0,2,3,5,6,8,9,10,12,13,13,14,15,15,15,15,15,15,14,13,12,11,10,9,7,6,4,3,1,0,-2,-2,0,2,3,5,7,8,10,11,12,13,14,15,16,16,16,16,16,15,15,14,13,12,10,9,8,6,4,3,1,-1,-2,-2,0,1,3,5,7,8,10,11,13,14,15,16,17,17,17,17,17,16,16,15,14,12,11,9,8,6,4,2,1,-1,-3,-3,-1,1,3,5,7,8,10,12,13,14,16,16,17,18,18,18,17,17,16,15,14,13,11,9,8,6,4,2,0,-2,-4,-4,-2,0,3,5,6,8,10,12,13,15,16,17,17,18,18,18,18,17,16,15,14,13,11,9,8,6,4,2,0,-3,-5,-5,-2,0,2,4,6,8,10,12,13,15,16,17,18,18,18,18,18,17,17,15,14,13,11,9,7,5,3,1,-1,-3,-6
 };
 
 static int8_t _CALIBRATION_CAC_BX[1024]=
 {
--31,-27,-24,-21,-18,-15,-13,-11,-9,-7,-6,-4,-3,-2,-1,0,0,1,2,3,4,6,7,9,11,13,15,18,21,24,27,31,-30,-27,-23,-20,-17,-15,-12,-10,-8,-7,-5,-4,-3,-2,-1,0,0,1,2,3,4,5,7,8,10,12,15,17,20,23,27,30,-30,-26,-23,-20,-17,-14,-12,-10,-8,-6,-5,-4,-3,-2,-1,0,0,1,2,3,4,5,7,8,10,12,14,17,20,23,26,30,-29,-26,-22,-19,-16,-14,-11,-9,-8,-6,-5,-4,-3,-2,-1,0,0,1,2,3,4,5,6,8,10,12,14,16,19,22,26,29,-29,-25,-22,-19,-16,-13,-11,-9,-7,-6,-5,-3,-3,-2,-1,0,0,1,2,3,3,5,6,7,9,11,13,16,19,22,25,29,-28,-25,-21,-18,-16,-13,-11,-9,-7,-6,-4,-3,-2,-2,-1,0,0,1,2,2,3,4,6,7,9,11,13,16,18,21,25,28,-28,-24,-21,-18,-15,-13,-10,-8,-7,-5,-4,-3,-2,-2,-1,0,0,1,2,2,3,4,5,7,9,11,13,15,18,21,24,28,-28,-24,-21,-18,-15,-12,-10,-8,-7,-5,-4,-3,-2,-1,-1,0,0,1,1,2,3,4,5,7,8,10,12,15,18,21,24,27,-27,-24,-20,-17,-15,-12,-10,-8,-6,-5,-4,-3,-2,-1,-1,0,0,1,1,2,3,4,5,6,8,10,12,15,17,20,24,27,-27,-23,-20,-17,-14,-12,-10,-8,-6,-5,-4,-3,-2,-1,-1,0,0,1,1,2,3,4,5,6,8,10,12,14,17,20,23,27,-27,-23,-20,-17,-14,-12,-9,-8,-6,-5,-4,-3,-2,-1,-1,0,0,1,1,2,3,4,5,6,8,10,12,14,17,20,23,27,-26,-23,-20,-17,-14,-11,-9,-7,-6,-4,-3,-3,-2,-2,-1,0,0,1,2,2,3,3,5,6,7,9,11,14,17,20,23,26,-26,-23,-19,-16,-14,-11,-9,-7,-6,-4,-3,-3,-2,-2,-1,-1,1,1,2,2,3,3,4,6,7,9,11,14,17,20,23,26,-26,-23,-19,-16,-14,-11,-9,-7,-6,-4,-3,-3,-2,-2,-2,-1,1,2,2,2,3,3,4,6,7,9,11,14,16,19,23,26,-26,-23,-19,-16,-14,-11,-9,-7,-6,-4,-3,-3,-2,-2,-2,-1,1,2,2,2,3,3,4,6,7,9,11,14,16,19,23,26,-26,-22,-19,-16,-13,-11,-9,-7,-6,-4,-3,-3,-2,-2,-2,-2,2,2,2,2,3,3,4,6,7,9,11,14,16,19,23,26,-26,-22,-19,-16,-13,-11,-9,-7,-6,-4,-3,-3,-2,-2,-2,-2,2,2,2,2,3,3,4,6,7,9,11,14,16,19,23,26,-26,-23,-19,-16,-14,-11,-9,-7,-6,-4,-3,-3,-2,-2,-2,-1,1,2,2,2,3,3,4,6,7,9,11,14,16,19,23,26,-26,-23,-19,-16,-14,-11,-9,-7,-6,-4,-3,-3,-2,-2,-1,-1,1,2,2,2,3,3,4,6,7,9,11,14,16,19,23,26,-26,-23,-19,-16,-14,-11,-9,-7,-6,-4,-3,-3,-2,-2,-1,0,1,1,2,2,3,3,4,6,7,9,11,14,17,20,23,26,-26,-23,-20,-17,-14,-11,-9,-7,-6,-5,-3,-3,-2,-2,-1,0,0,1,2,2,3,3,5,6,7,9,12,14,17,20,23,26,-27,-23,-20,-17,-14,-12,-9,-8,-6,-5,-4,-3,-2,-1,-1,0,0,1,1,2,3,4,5,6,8,10,12,14,17,20,23,27,-27,-23,-20,-17,-14,-12,-10,-8,-6,-5,-4,-3,-2,-1,-1,0,0,1,1,2,3,4,5,6,8,10,12,14,17,20,23,27,-27,-24,-20,-17,-15,-12,-10,-8,-6,-5,-4,-3,-2,-1,-1,0,0,1,1,2,3,4,5,6,8,10,12,15,17,20,24,27,-28,-24,-21,-18,-15,-12,-10,-8,-7,-5,-4,-3,-2,-1,-1,0,0,1,1,2,3,4,5,7,8,10,12,15,18,21,24,27,-28,-24,-21,-18,-15,-13,-10,-9,-7,-5,-4,-3,-2,-2,-1,0,0,1,2,2,3,4,5,7,9,11,13,15,18,21,24,28,-28,-25,-21,-18,-16,-13,-11,-9,-7,-6,-4,-3,-2,-2,-1,0,0,1,2,2,3,4,6,7,9,11,13,16,18,21,25,28,-29,-25,-22,-19,-16,-13,-11,-9,-7,-6,-5,-3,-3,-2,-1,0,0,1,2,3,4,5,6,7,9,11,14,16,19,22,25,29,-29,-26,-22,-19,-16,-14,-12,-10,-8,-6,-5,-4,-3,-2,-1,0,0,1,2,3,4,5,6,8,10,12,14,16,19,22,26,29,-30,-26,-23,-20,-17,-14,-12,-10,-8,-7,-5,-4,-3,-2,-1,0,0,1,2,3,4,5,7,8,10,12,14,17,20,23,26,30,-30,-27,-23,-20,-17,-15,-12,-10,-8,-7,-5,-4,-3,-2,-1,0,0,1,2,3,4,5,7,9,10,12,15,17,20,23,27,30,-31,-27,-24,-21,-18,-15,-13,-11,-9,-7,-6,-4,-3,-2,-1,0,0,1,2,3,4,6,7,9,11,13,15,18,21,24,27,31
+-57,-50,-43,-37,-32,-27,-22,-18,-14,-11,-9,-6,-4,-3,-1,0,2,3,5,7,10,12,16,19,24,28,34,39,46,52,60,67,-56,-49,-42,-36,-31,-26,-21,-17,-14,-11,-8,-6,-4,-2,-1,0,1,3,4,6,9,12,15,19,23,27,33,38,45,51,59,66,-55,-48,-41,-35,-30,-25,-20,-16,-13,-10,-7,-5,-3,-2,-1,0,1,2,4,6,8,11,14,18,22,26,32,37,44,50,57,65,-54,-47,-40,-34,-29,-24,-19,-15,-12,-9,-7,-5,-3,-2,-1,0,1,2,3,5,7,10,13,17,21,26,31,36,43,49,57,64,-53,-46,-40,-34,-28,-23,-19,-15,-11,-8,-6,-4,-2,-1,-1,0,1,2,3,5,7,9,12,16,20,25,30,36,42,48,56,63,-52,-45,-39,-33,-27,-22,-18,-14,-10,-8,-5,-3,-2,-1,0,0,1,1,2,4,6,8,12,15,19,24,29,35,41,48,55,62,-52,-45,-38,-32,-27,-22,-17,-13,-10,-7,-5,-3,-1,-1,0,0,0,1,2,3,5,8,11,14,19,23,28,34,40,47,54,61,-51,-44,-37,-31,-26,-21,-16,-12,-9,-6,-4,-2,-1,0,0,0,0,0,1,3,5,7,10,14,18,22,28,33,39,46,53,61,-50,-43,-37,-31,-25,-20,-16,-12,-8,-6,-3,-2,0,0,0,0,0,0,1,2,4,7,10,13,17,22,27,33,39,46,53,60,-50,-43,-36,-30,-25,-20,-15,-11,-8,-5,-3,-1,0,1,0,0,-1,-1,0,2,3,6,9,13,17,21,26,32,38,45,52,60,-49,-42,-36,-30,-24,-19,-15,-11,-7,-5,-2,0,1,1,1,0,-1,-1,0,1,3,5,9,12,16,21,26,32,38,45,52,59,-49,-42,-35,-29,-24,-19,-14,-10,-7,-4,-2,0,1,2,1,0,-1,-2,-1,0,2,5,8,12,16,20,26,31,38,44,51,59,-49,-42,-35,-29,-24,-19,-14,-10,-7,-4,-1,0,2,2,2,0,-2,-2,-1,0,2,5,8,11,16,20,25,31,37,44,51,59,-48,-41,-35,-29,-23,-18,-14,-10,-6,-3,-1,1,2,3,2,-1,-3,-3,-2,0,2,4,8,11,15,20,25,31,37,44,51,58,-48,-41,-35,-29,-23,-18,-14,-10,-6,-3,-1,1,2,3,3,-1,-3,-3,-2,0,2,4,7,11,15,20,25,31,37,44,51,58,-48,-41,-35,-29,-23,-18,-14,-10,-6,-3,-1,1,2,3,4,-3,-4,-3,-2,0,2,4,7,11,15,20,25,31,37,44,51,58,-48,-41,-35,-29,-23,-18,-14,-10,-6,-3,-1,1,2,3,3,-1,-3,-3,-2,0,2,4,7,11,15,20,25,31,37,44,51,58,-49,-42,-35,-29,-23,-18,-14,-10,-7,-4,-1,1,2,2,2,0,-2,-2,-2,0,2,5,8,11,15,20,25,31,37,44,51,58,-49,-42,-35,-29,-24,-19,-14,-10,-7,-4,-2,0,1,2,1,0,-2,-2,-1,0,2,5,8,12,16,20,25,31,37,44,51,59,-49,-42,-36,-30,-24,-19,-15,-11,-7,-4,-2,0,1,1,1,0,-1,-1,-1,1,3,5,8,12,16,21,26,32,38,44,52,59,-50,-42,-36,-30,-24,-19,-15,-11,-8,-5,-2,-1,0,1,1,0,-1,-1,0,1,3,6,9,12,16,21,26,32,38,45,52,59,-50,-43,-36,-30,-25,-20,-16,-12,-8,-5,-3,-1,0,0,0,0,0,0,0,2,4,6,9,13,17,22,27,32,39,45,53,60,-51,-44,-37,-31,-26,-21,-16,-12,-9,-6,-4,-2,-1,0,0,0,0,0,1,2,4,7,10,13,18,22,27,33,39,46,53,61,-51,-44,-38,-32,-26,-21,-17,-13,-9,-7,-4,-2,-1,0,0,0,0,1,2,3,5,7,11,14,18,23,28,34,40,47,54,61,-52,-45,-38,-32,-27,-22,-17,-14,-10,-7,-5,-3,-2,-1,0,0,0,1,2,4,6,8,11,15,19,24,29,34,41,47,54,62,-53,-46,-39,-33,-28,-23,-18,-14,-11,-8,-6,-4,-2,-1,0,0,1,2,3,4,6,9,12,16,20,24,29,35,41,48,55,63,-54,-47,-40,-34,-29,-24,-19,-15,-12,-9,-6,-4,-3,-2,-1,0,1,2,3,5,7,10,13,16,21,25,30,36,42,49,56,64,-55,-47,-41,-35,-29,-24,-20,-16,-12,-9,-7,-5,-3,-2,-1,0,1,2,4,6,8,10,14,17,21,26,31,37,43,50,57,64,-56,-48,-42,-36,-30,-25,-21,-17,-13,-10,-8,-5,-4,-2,-1,0,1,3,4,6,8,11,14,18,22,27,32,38,44,51,58,65,-57,-50,-43,-37,-31,-26,-22,-18,-14,-11,-8,-6,-4,-3,-1,0,2,3,5,7,9,12,15,19,23,28,33,39,45,52,59,67,-58,-51,-44,-38,-32,-27,-23,-19,-15,-12,-9,-7,-5,-3,-1,0,2,3,5,7,10,13,16,20,24,29,34,40,46,53,60,68,-59,-52,-45,-39,-33,-28,-24,-19,-16,-12,-10,-7,-5,-3,-1,0,2,4,6,8,11,14,17,21,25,30,35,41,47,54,61,69
 };
 
 static int8_t _CALIBRATION_CAC_BY[1024]=
 {
--17,-16,-15,-14,-13,-13,-12,-11,-10,-10,-9,-9,-8,-8,-8,-7,-7,-8,-8,-8,-9,-9,-10,-10,-11,-12,-13,-13,-14,-15,-16,-17,-16,-15,-14,-13,-12,-11,-11,-10,-9,-9,-8,-7,-7,-7,-7,-7,-7,-7,-7,-7,-8,-8,-9,-9,-10,-11,-11,-12,-13,-14,-15,-16,-15,-14,-13,-12,-11,-10,-10,-9,-8,-8,-7,-7,-6,-6,-6,-6,-6,-6,-6,-6,-7,-7,-8,-8,-9,-10,-10,-11,-12,-13,-14,-15,-13,-12,-12,-11,-10,-9,-9,-8,-7,-7,-6,-6,-5,-5,-5,-5,-5,-5,-5,-5,-6,-6,-7,-7,-8,-9,-9,-10,-11,-12,-12,-13,-12,-11,-10,-10,-9,-8,-8,-7,-6,-6,-5,-5,-5,-4,-4,-4,-4,-4,-4,-5,-5,-5,-6,-6,-7,-8,-8,-9,-10,-10,-11,-12,-11,-10,-9,-9,-8,-7,-7,-6,-6,-5,-5,-4,-4,-4,-4,-4,-4,-4,-4,-4,-4,-5,-5,-6,-6,-7,-7,-8,-9,-9,-10,-11,-10,-9,-8,-8,-7,-6,-6,-5,-5,-4,-4,-4,-3,-3,-3,-3,-3,-3,-3,-3,-4,-4,-4,-5,-5,-6,-6,-7,-8,-8,-9,-10,-8,-8,-7,-7,-6,-6,-5,-5,-4,-4,-3,-3,-3,-3,-3,-3,-3,-3,-3,-3,-3,-3,-4,-4,-5,-5,-6,-6,-7,-7,-8,-8,-7,-7,-6,-6,-5,-5,-4,-4,-4,-3,-3,-3,-2,-2,-2,-2,-2,-2,-2,-2,-3,-3,-3,-4,-4,-4,-5,-5,-6,-6,-7,-7,-6,-6,-5,-5,-5,-4,-4,-3,-3,-3,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-3,-3,-3,-4,-4,-5,-5,-5,-6,-6,-5,-5,-4,-4,-4,-3,-3,-3,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-3,-3,-3,-4,-4,-5,-5,-5,-4,-4,-4,-3,-3,-3,-2,-2,-2,-2,-2,-1,-1,-2,-2,-2,-2,-2,-2,-1,-1,-2,-2,-2,-2,-2,-3,-3,-3,-4,-4,-4,-3,-3,-3,-3,-2,-2,-2,-2,-1,-1,-1,-1,-1,-1,-2,-2,-2,-2,-1,-1,-1,-1,-1,-1,-2,-2,-2,-2,-3,-3,-3,-3,-2,-2,-2,-2,-2,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-2,-2,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-2,-2,-2,-2,-2,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,0,0,0,-1,-1,-2,-2,-1,-1,0,0,0,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-1,-1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,2,2,2,2,2,1,1,1,1,1,1,1,1,1,2,2,1,1,1,1,1,1,1,1,1,2,2,2,2,2,2,3,3,3,3,2,2,2,2,2,1,1,1,1,1,2,2,2,2,1,1,1,1,1,2,2,2,2,2,3,3,3,3,4,4,4,3,3,3,3,2,2,2,2,2,1,2,2,2,2,2,2,1,2,2,2,2,2,3,3,3,3,4,4,4,5,5,5,4,4,3,3,3,3,2,2,2,2,2,2,2,2,2,2,2,2,2,2,3,3,3,4,4,4,5,5,5,6,6,6,5,5,4,4,3,3,3,2,2,2,2,2,2,2,2,2,2,2,2,3,3,3,4,4,5,5,6,6,6,8,7,6,6,5,5,4,4,4,3,3,3,3,2,2,2,2,2,2,3,3,3,3,4,4,4,5,5,6,6,7,8,9,8,7,7,6,6,5,5,4,4,3,3,3,3,3,3,3,3,3,3,3,4,4,4,5,5,6,6,7,7,8,9,10,9,8,8,7,7,6,5,5,4,4,4,4,3,3,3,3,3,3,4,4,4,4,5,5,6,7,7,8,8,9,10,11,10,9,9,8,7,7,6,6,5,5,4,4,4,4,4,4,4,4,4,4,5,5,6,6,7,7,8,9,9,10,11,12,11,11,10,9,8,8,7,6,6,5,5,5,5,4,4,4,4,5,5,5,5,6,6,7,8,8,9,10,11,11,12,13,13,12,11,10,9,9,8,7,7,6,6,6,5,5,5,5,5,5,6,6,6,7,7,8,9,9,10,11,12,13,13,15,14,13,12,11,10,10,9,8,8,7,7,6,6,6,6,6,6,6,6,7,7,8,8,9,10,10,11,12,13,14,15,16,15,14,13,12,12,11,10,9,9,8,8,7,7,7,7,7,7,7,7,8,8,9,9,10,11,12,12,13,14,15,16,17,16,15,14,13,13,12,11,10,10,9,8,8,8,8,7,7,8,8,8,8,9,10,10,11,12,13,13,14,15,16,17
+-32,-30,-28,-26,-24,-23,-21,-19,-18,-16,-15,-14,-13,-12,-12,-12,-12,-12,-13,-14,-15,-17,-18,-20,-21,-23,-25,-27,-29,-31,-33,-35,-29,-27,-26,-24,-22,-20,-19,-17,-15,-14,-13,-12,-11,-10,-10,-9,-10,-10,-11,-12,-13,-15,-16,-18,-19,-21,-23,-24,-26,-28,-30,-32,-27,-25,-23,-21,-20,-18,-17,-15,-13,-12,-11,-10,-9,-8,-8,-7,-8,-8,-9,-10,-11,-13,-14,-15,-17,-19,-20,-22,-24,-25,-27,-29,-24,-22,-21,-19,-18,-16,-15,-13,-12,-10,-9,-8,-7,-6,-6,-6,-6,-6,-7,-8,-9,-11,-12,-14,-15,-17,-18,-20,-21,-23,-25,-26,-22,-20,-19,-17,-16,-14,-13,-11,-10,-9,-7,-6,-5,-5,-4,-4,-4,-5,-6,-7,-8,-9,-10,-12,-13,-15,-16,-18,-19,-21,-22,-24,-19,-18,-17,-15,-14,-12,-11,-10,-8,-7,-6,-5,-4,-3,-3,-2,-3,-3,-4,-5,-6,-8,-9,-10,-12,-13,-14,-16,-17,-18,-20,-21,-17,-16,-15,-13,-12,-11,-10,-8,-7,-6,-5,-4,-3,-2,-1,-1,-1,-2,-3,-4,-5,-6,-7,-9,-10,-11,-12,-14,-15,-16,-18,-19,-15,-14,-13,-12,-10,-9,-8,-7,-6,-5,-4,-2,-1,-1,0,0,0,-1,-2,-3,-4,-5,-6,-7,-8,-10,-11,-12,-13,-14,-15,-16,-13,-12,-11,-10,-9,-8,-7,-6,-5,-4,-3,-2,-1,0,1,1,1,0,-1,-2,-3,-4,-5,-6,-7,-8,-9,-10,-11,-12,-13,-14,-11,-10,-9,-8,-7,-6,-6,-5,-4,-3,-2,-1,0,1,2,2,2,1,0,-1,-2,-3,-4,-5,-6,-7,-8,-9,-9,-10,-11,-12,-9,-8,-7,-7,-6,-5,-4,-4,-3,-2,-1,0,1,2,2,3,2,1,0,-1,-2,-2,-3,-4,-5,-5,-6,-7,-8,-8,-9,-10,-7,-6,-6,-5,-5,-4,-3,-3,-2,-1,-1,0,1,2,3,3,3,2,1,0,-1,-2,-2,-3,-4,-4,-5,-5,-6,-7,-7,-8,-5,-5,-4,-4,-3,-3,-2,-2,-2,-1,0,0,1,2,3,3,3,2,1,0,-1,-1,-2,-2,-3,-3,-3,-4,-4,-5,-5,-6,-3,-3,-3,-2,-2,-2,-2,-1,-1,-1,0,0,1,1,3,4,2,1,1,0,0,-1,-1,-1,-2,-2,-2,-2,-3,-3,-3,-4,-1,-1,-1,-1,-1,-1,-1,-1,0,0,0,0,0,1,2,3,1,1,0,0,0,0,0,-1,-1,-1,-1,-1,-1,-1,-1,-1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-1,-2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,2,2,2,2,2,1,1,1,1,0,0,0,-1,-1,-2,-4,-2,-1,0,0,0,1,1,1,1,1,2,2,2,2,2,3,4,4,3,3,3,2,2,2,1,1,0,0,-1,-2,-3,-4,-3,-1,-1,0,0,1,1,2,2,3,3,3,4,4,4,5,6,6,5,5,4,4,3,2,2,1,1,0,-1,-2,-3,-3,-3,-2,-1,0,1,1,2,3,3,4,4,5,5,6,6,7,8,7,7,6,5,5,4,3,3,2,1,0,-1,-2,-3,-3,-2,-1,0,0,1,2,3,4,4,5,6,6,7,8,8,9,10,9,8,8,7,6,5,4,3,2,2,1,0,-1,-2,-2,-2,-1,0,1,2,3,4,4,5,6,7,8,9,9,10,11,12,11,10,9,8,7,6,5,4,3,2,1,0,-1,-1,-1,-1,0,1,2,3,4,5,6,7,8,8,9,10,11,12,13,14,13,12,11,10,9,7,6,5,4,3,2,1,0,0,-1,0,0,1,2,3,5,6,7,8,9,10,11,12,13,14,15,16,15,14,12,11,10,9,8,6,5,4,3,2,1,1,1,1,1,2,3,5,6,7,8,9,10,12,13,14,15,17,18,18,17,16,14,13,12,10,9,8,7,5,4,3,2,2,2,2,3,4,5,6,7,8,9,11,12,13,15,16,17,19,20,21,19,18,16,15,13,12,11,9,8,7,6,5,4,3,3,3,4,5,6,7,8,10,11,12,14,15,17,18,20,21,23,23,21,20,18,17,15,14,12,11,9,8,7,6,5,5,5,5,6,6,7,9,10,11,13,14,16,17,19,20,22,24,25,25,24,22,20,19,17,16,14,13,11,10,9,8,7,7,7,7,7,8,9,10,12,13,15,16,18,19,21,23,24,26,28,28,26,24,23,21,19,18,16,15,13,12,11,10,9,9,9,9,9,10,11,12,14,15,17,18,20,22,23,25,27,29,30,31,29,27,25,23,22,20,18,17,15,14,13,12,11,11,11,11,11,12,13,14,16,17,19,20,22,24,26,28,29,31,33,34,32,30,28,26,24,22,20,19,17,16,15,14,13,13,13,13,14,14,15,17,18,19,21,23,25,26,28,30,32,34,36,36,34,32,30,28,26,24,23,21,19,18,17,16,15,15,15,15,16,16,17,19,20,21,23,25,27,29,31,33,35,37,39
 };
 
 //CALIBRATION_AWB_RG_POS
 static int16_t _CALIBRATION_AWB_RG_POS[15]=
 {
-1501,1672,1842,2013,2183,2354,2525,2695,2866,3037,3207,3378,3549,3719,3890
+1506,1697,1887,2078,2269,2460,2651,2842,3033,3224,3415,3606,3797,3987,4178
 };
 
 //CALIBRATION_AWB_BG_POS
 static int16_t _CALIBRATION_AWB_BG_POS[15]=
 {
-991,1154,1316,1479,1641,1804,1966,2129,2291,2454,2616,2779,2941,3104,3266
+803,970,1136,1303,1470,1637,1804,1971,2138,2305,2472,2639,2806,2972,3139
 };
 
 //CALIBRATION_AWB_MESH_DIST_TAB
 static int16_t _CALIBRATION_AWB_MESH_DIST_TAB[15][15] =
 {
-{-160,-145,-131,-117,-103,-90,-77,-65,-54,-43,-33,-24,-15,-6,0,},
-{-146,-131,-116,-101,-87,-74,-61,-48,-37,-25,-15,-5,3,12,20,},
-{-132,-116,-101,-86,-71,-57,-44,-31,-19,-8,2,12,22,31,39,},
-{-118,-102,-86,-71,-56,-42,-28,-15,-2,9,20,30,40,49,58,},
-{-105,-89,-72,-57,-41,-26,-12,1,14,26,38,48,59,68,77,},
-{-93,-76,-59,-43,-27,-11,2,17,30,43,55,66,77,87,96,},
-{-80,-63,-46,-29,-13,2,17,32,46,60,72,84,95,105,114,},
-{-69,-51,-33,-16,1,16,32,47,62,76,89,101,113,123,133,},
-{-58,-39,-21,-4,13,29,46,62,77,92,105,118,130,141,151,},
-{-47,-28,-10,7,25,42,59,76,92,107,121,135,147,159,170,},
-{-37,-18,0,18,36,54,72,89,105,121,137,151,164,177,188,},
-{-27,-8,10,29,47,66,84,101,119,135,151,166,180,194,205,},
-{-19,0,19,39,58,76,95,113,131,148,165,181,196,210,223,},
-{-10,9,28,48,67,86,105,124,142,160,178,195,211,226,239,},
-{-2,17,37,57,76,96,115,134,153,172,190,208,225,241,256,},
+{-189,-174,-158,-144,-130,-117,-104,-92,-81,-71,-62,-53,-44,-37,-31,},
+{-173,-157,-141,-126,-112,-98,-85,-73,-62,-51,-42,-32,-24,-16,-9,},
+{-157,-140,-124,-109,-94,-80,-67,-54,-43,-32,-22,-12,-4,4,11,},
+{-142,-124,-108,-92,-77,-62,-48,-35,-23,-12,-2,7,16,24,32,},
+{-127,-109,-92,-75,-59,-44,-30,-17,-4,6,17,27,36,45,52,},
+{-112,-94,-76,-59,-43,-27,-12,1,14,26,37,47,56,65,73,},
+{-98,-79,-61,-43,-26,-10,4,19,32,45,56,67,77,85,94,},
+{-84,-65,-46,-28,-10,6,21,36,50,64,76,87,97,106,114,},
+{-71,-51,-32,-13,4,21,38,54,68,82,95,106,117,126,135,},
+{-59,-38,-18,1,19,37,54,71,86,100,113,125,136,146,155,},
+{-47,-26,-5,14,33,52,70,87,103,118,132,145,156,166,175,},
+{-35,-14,6,26,46,66,85,103,120,136,150,163,175,186,196,},
+{-25,-3,17,38,59,79,99,118,136,152,168,182,194,206,216,},
+{-15,6,28,50,71,92,112,132,151,168,185,200,213,225,236,},
+{-5,16,38,60,82,103,124,145,165,183,201,217,232,244,256,},
 };
 
 //CALIBRATION_AWB_MESH_CT_TAB
 static int16_t _CALIBRATION_AWB_MESH_CT_TAB[15][15] =
 {
-{6326,5602,4954,4376,3874,3441,3082,2798,2585,2445,2379,2386,2465,2617,2843,},
-{6443,5718,5071,4492,3990,3558,3199,2914,2702,2562,2496,2502,2582,2733,2959,},
-{6586,5862,5214,4636,4133,3701,3342,3058,2845,2705,2639,2645,2725,2877,3102,},
-{6758,6034,5386,4808,4305,3873,3514,3230,3017,2877,2811,2817,2897,3049,3274,},
-{6956,6232,5584,5006,4504,4072,3713,3428,3215,3076,3009,3016,3095,3247,3473,},
-{7184,6460,5812,5234,4731,4299,3940,3656,3443,3303,3237,3243,3323,3475,3700,},
-{7438,6713,6066,5487,4985,4553,4194,3910,3697,3557,3491,3497,3577,3728,3954,},
-{7721,6996,6349,5771,5268,4836,4477,4193,3980,3840,3774,3780,3860,4012,4237,},
-{8030,7305,6658,6079,5577,5145,4786,4502,4289,4149,4083,4089,4169,4320,4546,},
-{8368,7644,6996,6418,5916,5484,5125,4840,4627,4488,4421,4428,4507,4659,4885,},
-{8733,8008,7361,6782,6280,5848,5489,5204,4991,4852,4786,4792,4872,5023,5249,},
-{9127,8402,7755,7177,6674,6242,5883,5599,5386,5246,5180,5186,5266,5418,5643,},
-{9546,8822,8174,7596,7094,6661,6302,6018,5805,5665,5599,5606,5685,5837,6063,},
-{9996,9272,8624,8046,7543,7111,6752,6468,6255,6115,6049,6055,6135,6287,6512,},
-{10471,9746,9099,8520,8018,7586,7227,6942,6730,6590,6524,6530,6610,6761,6987,},
+{3967,3687,3526,3410,3064,2762,2703,2675,2672,2364,2382,2313,2290,2296,2300,},
+{4170,3951,3684,3562,3478,2825,2760,2721,2708,2713,2358,2378,2281,2257,2252,},
+{4578,4126,3826,3692,3604,3557,2805,2763,2742,2744,2754,2352,2368,2245,2251,},
+{4933,4560,4090,3803,3708,3656,3641,2792,2772,2767,2782,2602,2356,2366,2275,},
+{5098,4921,4545,4065,3791,3733,3716,3296,2784,2778,2763,2749,2570,2365,2363,},
+{5249,5048,4928,4536,4047,3787,3766,3780,3275,2784,2760,2732,2708,2540,2375,},
+{6241,5159,5011,4944,4539,4040,3789,3755,3705,3216,2781,2739,2698,2667,2513,},
+{6372,6259,5080,4983,4972,4538,4031,3772,3705,3622,3152,2773,2713,2661,2624,},
+{6521,6337,6292,5014,4971,4958,4497,4011,3747,3646,3533,3092,2761,2685,2622,},
+{7463,6446,6319,6338,5017,4973,4634,4104,3983,3714,3580,3437,2841,2745,2653,},
+{7542,7459,6382,6317,5632,5054,4965,4603,4106,3822,3672,3507,3333,2838,2723,},
+{9042,7485,7462,6399,6309,5607,5079,4943,4559,4096,3806,3619,3422,3223,2830,},
+{9666,8999,7486,7436,6419,6286,5238,5094,4912,4511,4083,3783,3562,3337,3049,},
+{10031,9674,8835,7511,7392,6424,6248,5291,5090,4862,4463,4058,3750,3498,3229,},
+{10053,10025,9542,8678,7522,7338,6428,6195,5332,5085,4807,4400,4021,3647,3193,},
 };
 
-//_CALIBRATION_AWB_CT_RG_CURVE
-static int32_t _CALIBRATION_AWB_CT_RG_CURVE[4] = {5460,-943,57,0};
+//CALIBRATION_AWB_CT_RG_CURVE
+static int32_t _CALIBRATION_AWB_CT_RG_CURVE[4] = {5716,-1022,64,0};
 
-//_CALIBRATION_AWB_CT_BG_CURVE
-static int32_t _CALIBRATION_AWB_CT_BG_CURVE[4] = {33,509,-19,0};
+//CALIBRATION_AWB_CT_BG_CURVE
+static int32_t _CALIBRATION_AWB_CT_BG_CURVE[4] = {-101,609,-30,0};
 
 //CALIBRATION_AWB_WB_GOLDEN_D50
-static int16_t _CALIBRATION_AWB_WB_GOLDEN_D50[] = {2168,2146};
+static int16_t _CALIBRATION_AWB_WB_GOLDEN_D50[2] = {2261,2173};
 
 //CALIBRATION_AWB_WB_OTP_D50
-static int16_t _CALIBRATION_AWB_WB_OTP_D50[] = {2168,2146};
+static int16_t _CALIBRATION_AWB_WB_OTP_D50[2] = {2261,2173};
 
 //Noise reduce calibration parameters
 static uint16_t _CALIBRATION_NOISE_PROFILE[9][16] =
 {
-{0,9,23,31,34,36,37,38,37,35,32,29,24,18,11,3,},
-{0,12,32,43,46,49,50,51,50,47,44,39,33,26,18,8,},
-{0,19,45,61,66,69,70,71,69,66,62,56,48,39,29,17,},
-{0,28,66,86,91,96,98,99,97,93,87,79,69,57,43,26,},
-{0,45,95,127,135,139,142,141,138,133,124,114,100,84,65,44,},
-{0,74,139,177,187,195,199,200,196,189,178,163,144,121,95,65,},
+{0,12,23,29,33,35,37,37,37,37,35,33,30,26,21,16,},
+{0,11,23,33,38,44,48,50,52,52,50,47,43,37,30,22,},
+{0,35,38,48,56,62,67,69,70,69,67,62,56,48,38,27,},
+{0,45,60,72,82,89,94,97,97,95,90,83,74,62,48,32,},
+{0,82,99,113,124,132,137,138,137,132,124,114,100,83,63,39,},
+{0,82,99,113,124,132,137,138,137,132,124,114,100,83,63,39,},
 {9,130,211,261,274,283,287,285,279,267,250,228,200,168,130,87,},
 {73,218,322,372,384,404,415,417,409,392,365,330,285,231,167,95,},
 {73,218,322,372,384,404,415,417,409,392,365,330,285,231,167,95,},
@@ -1571,12 +1611,15 @@ static uint16_t _CALIBRATION_NOISE_PROFILE[9][16] =
 static uint8_t _CALIBRATION_FPNR[2048*2*5] = {0};
 
 //aisp_awb_info_t
-static uint32_t _CALIBRATION_AWB_PRESET[12] =
+static uint32_t _CALIBRATION_AWB_PRESET[15] =
 {
     0,
     457,    //awb_sys_r_gain;
     256,    //awb_sys_g_gain;
     436,    //awb_sys_b_gain;
+    560,    //awb_sys_r_gain_comp;
+    256,    //awb_sys_g_gain_comp;
+    506,    //awb_sys_b_gain_comp;
     5563,   //awb_sys_ct;
     20,     //awb_sys_cdiff;
     5000,
@@ -1595,7 +1638,11 @@ static LookupTable calibration_awb_ct_rg_compensate = { .ptr = _CALIBRATION_AWB_
 static LookupTable calibration_awb_ct_bg_compensate = { .ptr = _CALIBRATION_AWB_CT_BG_COMPENSATE, .rows = 1, .cols = sizeof(_CALIBRATION_AWB_CT_BG_COMPENSATE) / sizeof(_CALIBRATION_AWB_CT_BG_COMPENSATE[0]), .width = sizeof(_CALIBRATION_AWB_CT_BG_COMPENSATE[0] ) };
 static LookupTable calibration_awb_ct_wgt = { .ptr = _CALIBRATION_AWB_CT_WGT, .rows = 1, .cols = sizeof( _CALIBRATION_AWB_CT_WGT ) / sizeof( _CALIBRATION_AWB_CT_WGT[0] ), .width = sizeof( _CALIBRATION_AWB_CT_WGT[0] )};
 static LookupTable calibration_awb_ct_dyn_cvrange = { .ptr = _CALIBRATION_AWB_CT_DYN_CVRANGE, .rows = sizeof(_CALIBRATION_AWB_CT_DYN_CVRANGE) / sizeof(_CALIBRATION_AWB_CT_DYN_CVRANGE[0]), .cols = sizeof(_CALIBRATION_AWB_CT_DYN_CVRANGE[0]) / sizeof(_CALIBRATION_AWB_CT_DYN_CVRANGE[0][0]), .width = sizeof(_CALIBRATION_AWB_CT_DYN_CVRANGE[0][0] ) };
+static LookupTable calibration_awb_weight_h = { .ptr = _CALIBRATION_AWB_WEIGHT_H, .rows = 1, .cols = sizeof( _CALIBRATION_AWB_WEIGHT_H ) / sizeof( _CALIBRATION_AWB_WEIGHT_H[0] ), .width = sizeof( _CALIBRATION_AWB_WEIGHT_H[0] )};
+static LookupTable calibration_awb_weight_v = { .ptr = _CALIBRATION_AWB_WEIGHT_V, .rows = 1, .cols = sizeof( _CALIBRATION_AWB_WEIGHT_V ) / sizeof( _CALIBRATION_AWB_WEIGHT_V[0] ), .width = sizeof( _CALIBRATION_AWB_WEIGHT_V[0] )};
+static LookupTable calibration_awb_ref_remove_lut = { .ptr = _CALIBRATION_AWB_REF_REMOVE_LUT, .rows = sizeof( _CALIBRATION_AWB_REF_REMOVE_LUT ) / sizeof( _CALIBRATION_AWB_REF_REMOVE_LUT[0] ), .cols = sizeof( _CALIBRATION_AWB_REF_REMOVE_LUT[0] ) / sizeof( _CALIBRATION_AWB_REF_REMOVE_LUT[0][0] ), .width = sizeof( _CALIBRATION_AWB_REF_REMOVE_LUT[0][0] )};
 static LookupTable calibration_ae_ctl = {.ptr = _CALIBRATION_AE_CTL, .rows = 1, .cols = sizeof( _CALIBRATION_AE_CTL ) / sizeof( _CALIBRATION_AE_CTL[0] ), .width = sizeof( _CALIBRATION_AE_CTL[0] )};
+static LookupTable calibration_highlight_detect = {.ptr = _CALIBRATION_HIGHLIGHT_DETECT, .rows = 1, .cols = sizeof( _CALIBRATION_HIGHLIGHT_DETECT ) / sizeof( _CALIBRATION_HIGHLIGHT_DETECT[0] ), .width = sizeof( _CALIBRATION_HIGHLIGHT_DETECT[0] )};
 static LookupTable calibration_ae_corr_lut = {.ptr = _CALIBRATION_AE_CORR_LUT, .rows = 1, .cols = sizeof( _CALIBRATION_AE_CORR_LUT ) / sizeof( _CALIBRATION_AE_CORR_LUT[0] ), .width = sizeof( _CALIBRATION_AE_CORR_LUT[0] )};
 static LookupTable calibration_ae_corr_pos_lut = {.ptr = _CALIBRATION_AE_CORR_POS_LUT, .rows = 1, .cols = sizeof( _CALIBRATION_AE_CORR_POS_LUT ) / sizeof( _CALIBRATION_AE_CORR_POS_LUT[0] ), .width = sizeof( _CALIBRATION_AE_CORR_POS_LUT[0] )};
 static LookupTable calibration_ae_route = {.ptr = _CALIBRATION_AE_ROUTE, .rows = 1, .cols = sizeof( _CALIBRATION_AE_ROUTE ) / sizeof( _CALIBRATION_AE_ROUTE[0] ), .width = sizeof( _CALIBRATION_AE_ROUTE[0] )};
@@ -1644,8 +1691,8 @@ static LookupTable calibration_mc_meta2alpha = { .ptr = _CALIBRATION_MC_META2ALP
 static LookupTable calibration_pst_tnr_alp_lut = { .ptr = _CALIBRATION_PST_TNR_ALP_LUT, .rows = sizeof(_CALIBRATION_PST_TNR_ALP_LUT) / sizeof(_CALIBRATION_PST_TNR_ALP_LUT[0]), .cols = sizeof(_CALIBRATION_PST_TNR_ALP_LUT[0]) / sizeof(_CALIBRATION_PST_TNR_ALP_LUT[0][0]), .width = sizeof(_CALIBRATION_PST_TNR_ALP_LUT[0][0] ) };
 static LookupTable calibration_compress_ratio = { .ptr = _CALIBRATION_COMPRESS_RATIO, .rows = 1, .cols = sizeof(_CALIBRATION_COMPRESS_RATIO) / sizeof(_CALIBRATION_COMPRESS_RATIO[0]), .width = sizeof(_CALIBRATION_COMPRESS_RATIO[0] ) };
 static LookupTable calibration_lens_shading_ct_correct = { .ptr = _CALIBRATION_LENS_SHADING_CT_CORRECT, .rows = 1, .cols = sizeof( _CALIBRATION_LENS_SHADING_CT_CORRECT ) / sizeof( _CALIBRATION_LENS_SHADING_CT_CORRECT[0] ), .width = sizeof( _CALIBRATION_LENS_SHADING_CT_CORRECT[0] )};
-static LookupTable calibration_lens_shading_actl = { .ptr = _CALIBRATION_ADP_LENS_SHADING_CTL, .rows = 1, .cols = sizeof(_CALIBRATION_ADP_LENS_SHADING_CTL) / sizeof(_CALIBRATION_ADP_LENS_SHADING_CTL[0]), .width = sizeof(_CALIBRATION_ADP_LENS_SHADING_CTL[0] ) };
-static LookupTable calibration_lens_shading_adp = { .ptr = _CALIBRATION_LENS_SHADING_ADP, .rows = 1, .cols = sizeof( _CALIBRATION_LENS_SHADING_ADP ) / sizeof( _CALIBRATION_LENS_SHADING_ADP[0] ), .width = sizeof( _CALIBRATION_LENS_SHADING_ADP[0] )};
+static LookupTable calibration_adp_lens_shading_ctl = { .ptr = _CALIBRATION_ADP_LENS_SHADING_CTL, .rows = 1, .cols = sizeof(_CALIBRATION_ADP_LENS_SHADING_CTL) / sizeof(_CALIBRATION_ADP_LENS_SHADING_CTL[0]), .width = sizeof(_CALIBRATION_ADP_LENS_SHADING_CTL[0] ) };
+static LookupTable calibration_lens_shading_adp = { .ptr = _CALIBRATION_LENS_SHADING_ADP, .rows = 1, .cols = sizeof(_CALIBRATION_LENS_SHADING_ADP) / sizeof(_CALIBRATION_LENS_SHADING_ADP[0]), .width = sizeof(_CALIBRATION_LENS_SHADING_ADP[0] ) };
 static LookupTable calibration_lens_shading_adj = {.ptr = _CALIBRATION_LENS_SHADING_ADJ, .rows = sizeof( _CALIBRATION_LENS_SHADING_ADJ ) / sizeof( _CALIBRATION_LENS_SHADING_ADJ[0] ), .cols = sizeof( _CALIBRATION_LENS_SHADING_ADJ[0] ) / sizeof( _CALIBRATION_LENS_SHADING_ADJ[0][0] ), .width = sizeof( _CALIBRATION_LENS_SHADING_ADJ[0][0] )};
 static LookupTable calibration_dms_adj = {.ptr = _CALIBRATION_DMS_ADJ, .rows = sizeof( _CALIBRATION_DMS_ADJ ) / sizeof( _CALIBRATION_DMS_ADJ[0] ), .cols = sizeof( _CALIBRATION_DMS_ADJ[0] ) / sizeof( _CALIBRATION_DMS_ADJ[0][0] ), .width = sizeof( _CALIBRATION_DMS_ADJ[0][0] )};
 static LookupTable calibration_ccm_adj = {.ptr = _CALIBRATION_CCM_ADJ, .rows = sizeof( _CALIBRATION_CCM_ADJ ) / sizeof( _CALIBRATION_CCM_ADJ[0] ), .cols = sizeof( _CALIBRATION_CCM_ADJ[0] ) / sizeof( _CALIBRATION_CCM_ADJ[0][0] ), .width = sizeof( _CALIBRATION_CCM_ADJ[0][0] )};
@@ -1688,6 +1735,8 @@ static LookupTable calibration_cm_hue_via_h = { .ptr = _CALIBRATION_CM_HUE_VIA_H
 static LookupTable calibration_cm_hue_via_s = { .ptr = _CALIBRATION_CM_HUE_VIA_S, .rows = sizeof(_CALIBRATION_CM_HUE_VIA_S) / sizeof(_CALIBRATION_CM_HUE_VIA_S[0]), .cols = sizeof(_CALIBRATION_CM_HUE_VIA_S[0]) / sizeof(_CALIBRATION_CM_HUE_VIA_S[0][0]), .width = sizeof(_CALIBRATION_CM_HUE_VIA_S[0][0] ) };
 static LookupTable calibration_cm_hue_via_y = { .ptr = _CALIBRATION_CM_HUE_VIA_Y, .rows = sizeof(_CALIBRATION_CM_HUE_VIA_Y) / sizeof(_CALIBRATION_CM_HUE_VIA_Y[0]), .cols = sizeof(_CALIBRATION_CM_HUE_VIA_Y[0]) / sizeof(_CALIBRATION_CM_HUE_VIA_Y[0][0]), .width = sizeof(_CALIBRATION_CM_HUE_VIA_Y[0][0] ) };
 static LookupTable calibration_hlc_ctl = { .ptr = _CALIBRATION_HLC_CTL, .rows = 1, .cols = sizeof(_CALIBRATION_HLC_CTL) / sizeof(_CALIBRATION_HLC_CTL[0]), .width = sizeof(_CALIBRATION_HLC_CTL[0] ) };
+static LookupTable calibration_csc_coef = { .ptr = _CALIBRATION_CSC_COEF, .rows = 1, .cols = sizeof(_CALIBRATION_CSC_COEF) / sizeof(_CALIBRATION_CSC_COEF[0]), .width = sizeof(_CALIBRATION_CSC_COEF[0] ) };
+static LookupTable calibration_version = { .ptr = _CALIBRATION_VERSION, .rows = 1, .cols = sizeof(_CALIBRATION_VERSION) / sizeof(_CALIBRATION_VERSION[0]), .width = sizeof(_CALIBRATION_VERSION[0] ) };
 
 static LookupTable calibration_black_level = { .ptr = _CALIBRATION_BLACK_LEVEL, .rows = sizeof( _CALIBRATION_BLACK_LEVEL ) / sizeof( _CALIBRATION_BLACK_LEVEL[0] ), .cols = sizeof( _CALIBRATION_BLACK_LEVEL[0] ) / sizeof( _CALIBRATION_BLACK_LEVEL[0][0] ), .width = sizeof( _CALIBRATION_BLACK_LEVEL[0][0] )};
 static LookupTable calibration_noise_profile = { .ptr = _CALIBRATION_NOISE_PROFILE, .rows = sizeof(_CALIBRATION_NOISE_PROFILE) / sizeof(_CALIBRATION_NOISE_PROFILE[0]), .cols = sizeof(_CALIBRATION_NOISE_PROFILE[0]) / sizeof(_CALIBRATION_NOISE_PROFILE[0][0]), .width = sizeof(_CALIBRATION_NOISE_PROFILE[0][0] ) };
@@ -1735,7 +1784,11 @@ int dynamic_sdr_calibrations_init_ov08a10(aisp_calib_info_t *calib)
     calib->calibrations[CALIBRATION_AWB_CT_BG_COMPENSATE] = &calibration_awb_ct_bg_compensate;
     calib->calibrations[CALIBRATION_AWB_CT_WGT] = &calibration_awb_ct_wgt;
     calib->calibrations[CALIBRATION_AWB_CT_DYN_CVRANGE] = &calibration_awb_ct_dyn_cvrange;
+    calib->calibrations[CALIBRATION_AWB_WEIGHT_H]= &calibration_awb_weight_h;
+    calib->calibrations[CALIBRATION_AWB_WEIGHT_V] = &calibration_awb_weight_v;
     calib->calibrations[CALIBRATION_AE_CTL] = &calibration_ae_ctl;
+    calib->calibrations[CALIBRATION_HIGHLIGHT_DETECT] = &calibration_highlight_detect;
+    calib->calibrations[CALIBRATION_AWB_REF_REMOVE_LUT] = &calibration_awb_ref_remove_lut;
     calib->calibrations[CALIBRATION_AE_CORR_POS_LUT] = &calibration_ae_corr_pos_lut;
     calib->calibrations[CALIBRATION_AE_CORR_LUT] = &calibration_ae_corr_lut;
     calib->calibrations[CALIBRATION_AE_ROUTE] = &calibration_ae_route;
@@ -1784,7 +1837,7 @@ int dynamic_sdr_calibrations_init_ov08a10(aisp_calib_info_t *calib)
     calib->calibrations[CALIBRATION_PST_TNR_ALP_LUT] = &calibration_pst_tnr_alp_lut;
     calib->calibrations[CALIBRATION_COMPRESS_RATIO] = &calibration_compress_ratio;
     calib->calibrations[CALIBRATION_LENS_SHADING_CT_CORRECT] = &calibration_lens_shading_ct_correct;
-    calib->calibrations[CALIBRATION_ADP_LENS_SHADING_CTL] = &calibration_lens_shading_actl;
+    calib->calibrations[CALIBRATION_ADP_LENS_SHADING_CTL] = &calibration_adp_lens_shading_ctl;
     calib->calibrations[CALIBRATION_LENS_SHADING_ADP] = &calibration_lens_shading_adp;
     calib->calibrations[CALIBRATION_LENS_SHADING_ADJ] = &calibration_lens_shading_adj;
     calib->calibrations[CALIBRATION_DMS_ADJ] = &calibration_dms_adj;
@@ -1828,6 +1881,8 @@ int dynamic_sdr_calibrations_init_ov08a10(aisp_calib_info_t *calib)
     calib->calibrations[CALIBRATION_CM_HUE_VIA_S] = &calibration_cm_hue_via_s;
     calib->calibrations[CALIBRATION_CM_HUE_VIA_Y] = &calibration_cm_hue_via_y;
     calib->calibrations[CALIBRATION_HLC_CTL] = &calibration_hlc_ctl;
+    calib->calibrations[CALIBRATION_CSC_COEF] = &calibration_csc_coef;
+    calib->calibrations[CALIBRATION_VERSION] = &calibration_version;
 
     calib->calibrations[CALIBRATION_BLACK_LEVEL] = &calibration_black_level;
     calib->calibrations[CALIBRATION_CAC_RX] = &calibration_cac_rx;

@@ -180,6 +180,33 @@ static int imx415_set_exposure(struct imx415 *imx415, u32 value)
 	return ret;
 }
 
+static int imx415_set_vts(struct imx415 *imx415, u32 value)
+{
+	u32 vts = 0;
+	u8 vts_h, vts_l;
+	int ret = 0;
+
+	//dev_err(imx415->dev, "get vts 0x%x, dec: %d\n", value, value);
+	vts = value;
+	vts_h = (vts >> 8) & 0xff;
+	vts_l = vts & 0xff;
+
+	ret = imx415_write_reg(imx415, 0x3025, vts_h);
+	if (ret) {
+		dev_err(imx415->dev, "Error setting vts register, line %d\n", __LINE__);
+		goto ERR;
+	}
+
+	ret = imx415_write_reg(imx415, 0x3024, vts_l);
+	if (ret) {
+		dev_err(imx415->dev, "Error setting vts register, line %d\n", __LINE__);
+		goto ERR;
+	}
+
+ERR:
+	return ret;
+}
+
 static int imx415_set_fps(struct imx415 *imx415, u32 value)
 {
 	u32 vts = 0;
@@ -233,6 +260,9 @@ static int imx415_set_ctrl(struct v4l2_ctrl *ctrl)
 		if (imx415->fps != 60) {
 			ret = imx415_set_fps(imx415, imx415->fps);
 		}
+		break;
+	case V4L2_CID_AML_VTS:
+		ret = imx415_set_vts(imx415, ctrl->val);
 		break;
 	default:
 		dev_err(imx415->dev, "Error ctrl->id %u, flag 0x%lx\n",
@@ -706,11 +736,23 @@ static struct v4l2_ctrl_config nlane_cfg = {
 	.def = 4,
 };
 
+static struct v4l2_ctrl_config vts_cfg = {
+	.ops = &imx415_ctrl_ops,
+	.id = V4L2_CID_AML_VTS,
+	.name = "sensor vts",
+	.type = V4L2_CTRL_TYPE_INTEGER,
+	.flags = V4L2_CTRL_FLAG_VOLATILE | V4L2_CTRL_FLAG_EXECUTE_ON_WRITE,
+	.min = 1,
+	.max = 0xffff,
+	.step = 1,
+	.def = 2256, //sensor vmax register[0x3025-0x3024]
+};
+
 static int imx415_ctrls_init(struct imx415 *imx415)
 {
 	int rtn = 0;
 
-	v4l2_ctrl_handler_init(&imx415->ctrls, 7);
+	v4l2_ctrl_handler_init(&imx415->ctrls, 8);
 
 	v4l2_ctrl_new_std(&imx415->ctrls, &imx415_ctrl_ops,
 				V4L2_CID_GAIN, 0, 0xF0, 1, 0);
@@ -740,6 +782,7 @@ static int imx415_ctrls_init(struct imx415 *imx415)
 	imx415->wdr = v4l2_ctrl_new_custom(&imx415->ctrls, &wdr_cfg, NULL);
 
 	v4l2_ctrl_new_custom(&imx415->ctrls, &fps_cfg, NULL);
+	v4l2_ctrl_new_custom(&imx415->ctrls, &vts_cfg, NULL);
 
 	imx415->sd.ctrl_handler = &imx415->ctrls;
 
@@ -772,7 +815,7 @@ static int imx415_register_subdev(struct imx415 *imx415)
 		goto err_return;
 	}
 
-	rtn = v4l2_async_register_subdev(&imx415->sd);
+	rtn = v4l2_async_register_subdev_sensor(&imx415->sd);
 	if (rtn < 0) {
 		dev_err(imx415->dev, "Could not register v4l2 device\n");
 		goto err_return;

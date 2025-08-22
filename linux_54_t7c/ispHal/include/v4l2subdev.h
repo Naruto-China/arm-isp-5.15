@@ -30,7 +30,7 @@ enum {
 #define V4L2_CID_AML_STROBE          (V4L2_CID_AML_BASE + 0x003)
 #define V4L2_CID_AML_MODE            (V4L2_CID_AML_BASE + 0x004)
 #define V4L2_CID_AML_LENS_MOVING     (V4L2_CID_AML_BASE + 0x006)
-
+#define V4L2_CID_AML_VTS             (V4L2_CID_AML_BASE + 0x009)
 #ifdef __cplusplus
 extern "C" {
 #endif

@@ -9,6 +9,7 @@
 
 #include "aml_isp_tuning.h"
 
+static int32_t _CALIBRATION_VERSION[1] = {20250313};
 //aisp_top_ctl_t
 static int32_t _CALIBRATION_TOP_CTL[50] = {
     1, // ISP input channels n+1
@@ -89,8 +90,8 @@ static int32_t _CALIBRATION_AWB_CTL[25] = {
     1,       //u1, awb delay adjust enable
     10,      //u16, awb delay frame count
     200,     //u16, awb delay adjust tolerance by color temperature
-    0,       //u16, awb low luma ratio
     0,       //u1, awb Remove reference color
+    0,       //u16, awb low luma ratio
     256,     //u1, awb color shading range
     256,     //u16, manual awb mode red gain
     256,     //u16, manual awb mode blue gain
@@ -98,10 +99,13 @@ static int32_t _CALIBRATION_AWB_CTL[25] = {
     0,       //bit[0] color temperature hist, [1] weight table, [2] ct table, [3] log
     0,       //u1, awb stable mode enable
     100,     //u16, awb stable mode ct delta det
-    100,     //u16, awb stable mode color delta det
+    100,    //u16, awb stable mode color delta det
     0,      //u1, awb roi enable
     1,      //u12, awb roi weight init
 };
+
+static uint8_t _CALIBRATION_AWB_WEIGHT_H[17] = {16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16};
+static uint8_t _CALIBRATION_AWB_WEIGHT_V[15] = {16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16};
 
 //_CALIBRATION_AWB_CT_POS
 static uint32_t _CALIBRATION_AWB_CT_POS[20] = {10000,7500,6500,5000,4050,3850,2800,2200};
@@ -119,6 +123,12 @@ static int32_t _CALIBRATION_AWB_CT_WGT[20] = {1,1,2,3,2,1,1,1};
 static int32_t _CALIBRATION_AWB_CT_DYN_CVRANGE[2][20] = {
     {-10,-8,-2,16,8,-12,-12,-16},
     {-10,-8,-2,16,8,-12,-12,-16},
+};
+
+//_CALIBRATION_AWB_REF_REMOVE_LUT
+static int32_t _CALIBRATION_AWB_REF_REMOVE_LUT[20][3] =
+{
+    {2051, 1928, 64},
 };
 
 //aisp_ae_t
@@ -141,20 +151,59 @@ static int32_t _CALIBRATION_AE_CTL[32] = {
     1, //ae delay adjust enable
     10, //ae delay frame count
     100, //ae delay adjust tolerance
-    (8<<12), //WDR mode only: ae WDR mode low light threshold by log2 value of gain
+    400, //WDR mode only: ae WDR mode low light threshold, use ISO representation, ISO = times * 100
     50,   //WDR mode only: Max percentage of clipped pixels for long exposure: WDR mode only: 256 = 100% clipped pixels
     15,   //WDR mode only: Time filter for exposure ratio
     0,   //reduce fps feature enable.
-    15*256,        //target fps of reduce frame rates.
-    (4<<12),   //trigger threshold of the reduce fps, write gain log2 value.
-    (1<<10),   //lag threshold of the reduce fps, write gain log2 value.
-    (2<<12),        // max isp gain limit, exp: x4 = log2(4)<<12 = 2<<12
-    (1000<<12),     // max shutter time limit, exp:  1000ms = 1000<<12
-    (30720),       // max total gain limit, exp:x1024 = log2(1024)<<12 = 10<<12, 54db = (54/6)<<12 = 9<<12
-    (10<<6),       // max exposure ratio limit, exp: x128 = 128<<6
-    (200*(1<<10)),  //  Light intensity at full exposure and zero gain , exp: 128lux = 128<<16
+    15,        //target fps of reduce frame rates.
+    1600,   //trigger threshold of the reduce fps, use ISO representation, ISO = times * 100.
+    50,   //lag threshold of the reduce fps, use ISO representation, (trigger threshold + lag threshold) or (trigger threshold - lag threshold).
+    400,        // max isp gain limit, use ISO representation, ISO = times * 100
+    1000000,     // max shutter time limit, this is absolute time, unit is us
+    12800,       // max total gain limit, use ISO representation, ISO = times * 100
+    16,       // max exposure ratio limit, this is times.
+    (200*(1<<10)),  //  Light intensity at full exposure and zero gain , exp: 128lux = 128*(1<<10)
     2,       //feedback delay frame numbers of stats info in current system
     0,       //ae debug:bit[0] target, [1] ratio, [2] exposure calculate
+};
+
+//aisp_highlight_det_t
+static int32_t _CALIBRATION_HIGHLIGHT_DETECT[27] = {
+    //highlight all
+    0,                  /**< u1, highlight enable, 0:disable; 1:enable */
+    1,                  /**< u1, highlight mode, 0: manual, 1: auto */
+    128,                /**< u8, manual highlight strength,range(0,255),recommend is (0,230), default is 128  */
+    // highlight auto
+    0,                  /**< u1, auto highlight car enable, if enable, when detected car light scene, will do highlight suppressive */
+    128,                /**< u8, auto highlight car strength, range(0,255),recommend is (0,230), default is 128  */
+    0,                  /**< u1, auto highlight window enable, if enable, when detected window scene, will do highlight suppressive */
+    128,                /**< u8, auto highlight window strength, range(0,255),recommend is (0,128), default is 128 */
+    //backlight compensation
+    0,                  /**< u1,backligh compensation enable, 0:disable;1:enable */
+    128,                /**< u8, backlight compensation strength,range(0,255),recommend is (0,230), default is 128  */
+    //global
+    102,                /**< u10, is used for highcontrast detect,the larger the value, the more difficult it is to detect as high-contrast scenes,default is 102 */
+    1023,               /**< u12, is used for highcontrast detect,the smaller the value, the more difficult it is to detect as high-contrast scenes,default is 1023 */
+    700,                /**< u10, is used for highcontrast detect,the larger the value, the more difficult it is to detect as high-contrast scenes,default is 700 */
+    //local
+    230,                /**< u8, the ratio0 to entry car light sense, the larger the vlaue, the more difficult to entry car light scene,default is 230*/
+    20,                 /**< u8, the ratio1 to entry car light sense, the larger the vlaue, the more difficult to entry car light scene,default is 20*/
+    0,                  /**< u8, the ratio2 to entry car light sense, the larger the vlaue, the more difficult to entry car light scene,default is 0*/
+    2,                  /**< u4, local block threshold, if highlight area more than blk0xblk0, and less than (blk0+delta)x(blk0+delta),if no consider attenuation, it is car light scene,default is 2 */
+    2,                  /**< u4, local block delta,if highlight area more than blk0xblk0, and less than (blk0+delta)x(blk0+delta),if no considerattenuation, it is car light scene,default is 2*/
+    128,                /**< u8, the ratio0 to exit car light sense, the smaller the vlaue, the more difficult to exit,default is 128*/
+    24,                 /**< u8, the ratio1 to exit car light sense, the smaller the vlaue, the more difficult to exit,default is 24*/
+    5,                  /**< u8, auto highlight delay, default is 5*/
+    10,                 /**< u5, auto highlight sense change threshold , default is 10  */
+    //attenuation
+    1,                  /**< u1, highlight attenuation enable, is used for car light detect, 0: disable, 1:enable */
+    7,                  /**< u8, highlight attenuation threshold, is used for car light detect, default is 7*/
+    6,                  /**< u4, highlight attenuation count, is used for car light detect, default is 6, max is 8*/
+    //lowlight
+    1,                  /**< u1, lowlight enable, 0: disable, 1:enable */
+    20,                 /**< u5, 1: lowlight strength, default is 16 */
+    //debug
+    0,                  /**< u2, 1: print highlight/backlight parameters, 2, print car detect parameters,default is 0 */
 };
 
 static int32_t _CALIBRATION_AE_CORR_LUT[64] =  {128, 128, 110, 80, 60, 40, 40, 40, 40, 40};
@@ -194,21 +243,14 @@ static uint8_t _CALIBRATION_AE_WEIGHT_T[15][17] = {
 };
 
 //aisp_dn_det_t
-static int32_t _CALIBRATION_DAYNIGHT_DETECT[14] = {
+static int32_t _CALIBRATION_DAYNIGHT_DETECT[7] = {
     0,    //light_control; 1:0n, 0: off
-    0,    // hist_stat_mode; 0: average based AE, 1: weight
-    120,  // predict_day_thr;  default is 50
-    60,   // predict_night_thr; default is 50
-    8,    // dn_det_tran_ratio; default 16/128
-    240,  // dn_det_day_thr; default 60
-    240,  // dn_det_night_thr;  default 240
-    2000, // dn_det_light_ct_low;
-    5000, // dn_det_light_ct_high;
-    1023, //dn_wdr_mean_ratio
-    300, // dn_rg_blk_sum_thr
-    400, //dn_rg_thr
-    400, //dn_bg_thr
-    0, //print_debug 0:not print 1:print
+    0,    // status;
+    70,   /**< u10, day brightness threshold, default is 70 */
+    2500, /**< u10, night ir brightness threshold, default is 2500 */
+    250,  /**< u10, night ir visible_light/IR threshold, default is 250*/
+    2000, /**< u10, night light brightness threshold, default is 2000*/
+    0,    /**< u1, daynight debug enable, default is 0*/
 };
 
 //aisp_af_t
@@ -246,7 +288,7 @@ static uint32_t _CALIBRATION_FLICKER_CTL[20] = {
     1,      //u32, whether delete invalid flicker
     0,      //u32, 0: half (reg_flkr_stat_yed-reg_flkr_stat_yst) statistic, 1: the whole (reg_flkr_stat_yed-reg_flkr_stat_yst) statistic.
     1,      //u32, 0:no lpf,1: [1 2 1]/4, 2: [1 2 2 2 1]/8, 3: [1 1 1 2 1 1 1]/8, 4 or else: [1 2 2 2 2 2 2 2 1]/16, lpf of row avg for flicker detection
-    30,      //u32, output flicker result after flkr_det_cnt
+    10,      //u32, output flicker result after flkr_det_cnt
     64000,  //u32, peaks/valleys interval thrd for valid wave
     3,      //u32, peaks/valleys value for valid wave
     5,     //u32, peaks/valleys value difference for valid wave
@@ -255,14 +297,14 @@ static uint32_t _CALIBRATION_FLICKER_CTL[20] = {
     1,      //u32, fft mlen, default value is recommended
     100,      //u32, fft norm, default value is recommended
     1000,   //u32, threshold for valid flicker of fft, default value is recommended
-    1,      //u32, sensor exposure information adjust gain, default is 1, 2x2bin is 2
-    20,     //u32, normalize to u4
+    16,   //u32, sensor exposure information adjust gain, default value is 16, if max_exposure = VTS*2, so value is 8
+    17,     //u32, normalize to u4
     500,    //u32, flkr_det_sum_pdif_th
     150,    //u32 flkr_det_scan_ofst
     20,     //u32 flkr_det_wave_ofst
     2000,   //u32 flkr_det_ae_diff_th
     10,     //u32 flkr_det_noflkr_cnt_th
-    30,     //u32 sum_pdif ratio
+    3,     //u32 flkr_det_pdif_ratio
 };
 
 static uint16_t _CALIBRATION_GTM[129]= {
@@ -785,11 +827,11 @@ static uint32_t _CALIBRATION_COMPRESS_RATIO[2] =
 //aisp_lsc_adj_t
 static uint16_t _CALIBRATION_LENS_SHADING_ADJ[ISO_NUM_MAX][2] = {
 /* radial shding strength  | mesh shding strength*/
-    {128, 128,}, //x1 gain
-    {128, 128,}, //x2 gain
-    {128, 128,}, //x4 gain
-    {128, 128,}, //x8 gain
-    {128, 128,}, //x16 gain
+    {256, 256,}, //x1 gain
+    {256, 256,}, //x2 gain
+    {256, 256,}, //x4 gain
+    {256, 256,}, //x8 gain
+    {256, 256,}, //x16 gain
     {64,   64,}, //x32 gain
     {64,   64,}, //x64 gain
     {64,   64,}, //x128 gain
@@ -805,15 +847,15 @@ static int32_t _CALIBRATION_LENS_SHADING_CT_CORRECT[4] = {
 
 static uint32_t _CALIBRATION_ADP_LENS_SHADING_CTL[11] =
 {
-    0,   //adaptive lens shading en. 1: alsc by lut 2: alsc by stats
+    2,   //adaptive lens shading en. 1: alsc by lut 2: alsc by stats
     128, //adaptive adjust speed
     100, //adaptive adjust range
-    16,  //adaptive stabilize threshold
+    8,  //adaptive stabilize threshold
     16,  //adaptive stabilize maximum threshold >= th
     8,   //delay frame numbers
-    200, //red color shift minimum value
-    600, //blue color shift minimum value
-    800, //red color shift maximum value
+    900, //red color shift minimum value
+    1200, //blue color shift minimum value
+    1200, //red color shift maximum value
     400, //blue color shift maximum value
     0,   //log print
 };
@@ -984,7 +1026,7 @@ static uint16_t _CALIBRATION_LTM_SATUR_LUT[63] = {
 };
 
 //aisp_lc_t
-static int32_t _CALIBRATION_LC_CTL[14] = {
+static int32_t _CALIBRATION_LC_CTL[16] = {
     1,  //lc_auto_enable
     1, //lc_blkblend_mode
     6, //lc_lmtrat_minmax
@@ -996,9 +1038,11 @@ static int32_t _CALIBRATION_LC_CTL[14] = {
     0,  //lc_str_fixed
     2,  //lc_damper64
     63, //lc_nodes_alpha;
+    64, //lc_final_gain
     90, //u7, lc_single_bin_th, 0-100
     0,  //lc_single_bin_prot_en
     16, //u7, lc_single_bin_prot_strgth, 0 is strongest protection, 64 is without protection, max is 64
+    0,  //u7, lc_ymaxv_lmt, limit the height of ymaxV from y=x, max is 64, 0: unrestricted; 64: ymaxV = maxV
 };
 
 static int32_t _CALIBRATION_LC_STRENGTH[ISO_NUM_MAX][2] = {
@@ -1327,17 +1371,21 @@ static int32_t _CALIBRATION_HLC_CTL[3] = {
     240,    //hlc_luma_trgt
 };
 
+//rgb2yuv_709f_u10[9] = {218, 732, 74, -118, -394,  512,  512, -465, -47};
+//rgb2yuv_601f_u10[9] = {306, 601, 117, -173, -339, 512, 512, -429, -83};
+static int32_t _CALIBRATION_CSC_COEF[9] = {306, 601, 117, -173, -339, 512, 512, -429, -83};
+
 static int32_t _CALIBRATION_BLACK_LEVEL[9][5] =
 {
-    {61440,61440,61440,61440,61440,},
-    {61440,61440,61440,61440,61440,},
-    {61440,61440,61440,61440,61440,},
-    {61440,61440,61440,61440,61440,},
-    {61440,61440,61440,61440,61440,},
-    {61440,61440,61440,61440,61440,},
-    {61440,61440,61440,61440,61440,},
-    {61440,61440,61440,61440,61440,},
-    {61440,61440,61440,61440,61440,},
+    {61504,61504,61504,61504,61504,},
+    {61376,61376,61392,61392,61376,},
+    {61360,61360,61360,61360,61360,},
+    {61248,61264,61248,61248,61248,},
+    {61296,61296,61296,61312,61296,},
+    {60976,60960,60960,60960,60976,},
+    {60816,60800,60800,60784,60816,},
+    {59392,59392,59328,59280,59392,},
+    {59216,59184,59056,59008,59216,},
 };
 
 static uint16_t _CALIBRATION_SHADING_RADIAL_R[129]=
@@ -1571,12 +1619,15 @@ static uint16_t _CALIBRATION_NOISE_PROFILE[9][16] =
 static uint8_t _CALIBRATION_FPNR[2048*2*5] = {0};
 
 //aisp_awb_info_t
-static uint32_t _CALIBRATION_AWB_PRESET[12] =
+static uint32_t _CALIBRATION_AWB_PRESET[15] =
 {
     0,
     457,    //awb_sys_r_gain;
     256,    //awb_sys_g_gain;
     436,    //awb_sys_b_gain;
+    560,    //awb_sys_r_gain_comp;
+    256,    //awb_sys_g_gain_comp;
+    506,    //awb_sys_b_gain_comp;
     5563,   //awb_sys_ct;
     20,     //awb_sys_cdiff;
     5000,
@@ -1595,7 +1646,11 @@ static LookupTable calibration_awb_ct_rg_compensate = { .ptr = _CALIBRATION_AWB_
 static LookupTable calibration_awb_ct_bg_compensate = { .ptr = _CALIBRATION_AWB_CT_BG_COMPENSATE, .rows = 1, .cols = sizeof(_CALIBRATION_AWB_CT_BG_COMPENSATE) / sizeof(_CALIBRATION_AWB_CT_BG_COMPENSATE[0]), .width = sizeof(_CALIBRATION_AWB_CT_BG_COMPENSATE[0] ) };
 static LookupTable calibration_awb_ct_wgt = { .ptr = _CALIBRATION_AWB_CT_WGT, .rows = 1, .cols = sizeof( _CALIBRATION_AWB_CT_WGT ) / sizeof( _CALIBRATION_AWB_CT_WGT[0] ), .width = sizeof( _CALIBRATION_AWB_CT_WGT[0] )};
 static LookupTable calibration_awb_ct_dyn_cvrange = { .ptr = _CALIBRATION_AWB_CT_DYN_CVRANGE, .rows = sizeof(_CALIBRATION_AWB_CT_DYN_CVRANGE) / sizeof(_CALIBRATION_AWB_CT_DYN_CVRANGE[0]), .cols = sizeof(_CALIBRATION_AWB_CT_DYN_CVRANGE[0]) / sizeof(_CALIBRATION_AWB_CT_DYN_CVRANGE[0][0]), .width = sizeof(_CALIBRATION_AWB_CT_DYN_CVRANGE[0][0] ) };
+static LookupTable calibration_awb_weight_h = { .ptr = _CALIBRATION_AWB_WEIGHT_H, .rows = 1, .cols = sizeof( _CALIBRATION_AWB_WEIGHT_H ) / sizeof( _CALIBRATION_AWB_WEIGHT_H[0] ), .width = sizeof( _CALIBRATION_AWB_WEIGHT_H[0] )};
+static LookupTable calibration_awb_weight_v = { .ptr = _CALIBRATION_AWB_WEIGHT_V, .rows = 1, .cols = sizeof( _CALIBRATION_AWB_WEIGHT_V ) / sizeof( _CALIBRATION_AWB_WEIGHT_V[0] ), .width = sizeof( _CALIBRATION_AWB_WEIGHT_V[0] )};
+static LookupTable calibration_awb_ref_remove_lut = { .ptr = _CALIBRATION_AWB_REF_REMOVE_LUT, .rows = sizeof( _CALIBRATION_AWB_REF_REMOVE_LUT ) / sizeof( _CALIBRATION_AWB_REF_REMOVE_LUT[0] ), .cols = sizeof( _CALIBRATION_AWB_REF_REMOVE_LUT[0] ) / sizeof( _CALIBRATION_AWB_REF_REMOVE_LUT[0][0] ), .width = sizeof( _CALIBRATION_AWB_REF_REMOVE_LUT[0][0] )};
 static LookupTable calibration_ae_ctl = {.ptr = _CALIBRATION_AE_CTL, .rows = 1, .cols = sizeof( _CALIBRATION_AE_CTL ) / sizeof( _CALIBRATION_AE_CTL[0] ), .width = sizeof( _CALIBRATION_AE_CTL[0] )};
+static LookupTable calibration_highlight_detect = {.ptr = _CALIBRATION_HIGHLIGHT_DETECT, .rows = 1, .cols = sizeof( _CALIBRATION_HIGHLIGHT_DETECT ) / sizeof( _CALIBRATION_HIGHLIGHT_DETECT[0] ), .width = sizeof( _CALIBRATION_HIGHLIGHT_DETECT[0] )};
 static LookupTable calibration_ae_corr_lut = {.ptr = _CALIBRATION_AE_CORR_LUT, .rows = 1, .cols = sizeof( _CALIBRATION_AE_CORR_LUT ) / sizeof( _CALIBRATION_AE_CORR_LUT[0] ), .width = sizeof( _CALIBRATION_AE_CORR_LUT[0] )};
 static LookupTable calibration_ae_corr_pos_lut = {.ptr = _CALIBRATION_AE_CORR_POS_LUT, .rows = 1, .cols = sizeof( _CALIBRATION_AE_CORR_POS_LUT ) / sizeof( _CALIBRATION_AE_CORR_POS_LUT[0] ), .width = sizeof( _CALIBRATION_AE_CORR_POS_LUT[0] )};
 static LookupTable calibration_ae_route = {.ptr = _CALIBRATION_AE_ROUTE, .rows = 1, .cols = sizeof( _CALIBRATION_AE_ROUTE ) / sizeof( _CALIBRATION_AE_ROUTE[0] ), .width = sizeof( _CALIBRATION_AE_ROUTE[0] )};
@@ -1644,8 +1699,8 @@ static LookupTable calibration_mc_meta2alpha = { .ptr = _CALIBRATION_MC_META2ALP
 static LookupTable calibration_pst_tnr_alp_lut = { .ptr = _CALIBRATION_PST_TNR_ALP_LUT, .rows = sizeof(_CALIBRATION_PST_TNR_ALP_LUT) / sizeof(_CALIBRATION_PST_TNR_ALP_LUT[0]), .cols = sizeof(_CALIBRATION_PST_TNR_ALP_LUT[0]) / sizeof(_CALIBRATION_PST_TNR_ALP_LUT[0][0]), .width = sizeof(_CALIBRATION_PST_TNR_ALP_LUT[0][0] ) };
 static LookupTable calibration_compress_ratio = { .ptr = _CALIBRATION_COMPRESS_RATIO, .rows = 1, .cols = sizeof(_CALIBRATION_COMPRESS_RATIO) / sizeof(_CALIBRATION_COMPRESS_RATIO[0]), .width = sizeof(_CALIBRATION_COMPRESS_RATIO[0] ) };
 static LookupTable calibration_lens_shading_ct_correct = { .ptr = _CALIBRATION_LENS_SHADING_CT_CORRECT, .rows = 1, .cols = sizeof( _CALIBRATION_LENS_SHADING_CT_CORRECT ) / sizeof( _CALIBRATION_LENS_SHADING_CT_CORRECT[0] ), .width = sizeof( _CALIBRATION_LENS_SHADING_CT_CORRECT[0] )};
-static LookupTable calibration_lens_shading_actl = { .ptr = _CALIBRATION_ADP_LENS_SHADING_CTL, .rows = 1, .cols = sizeof(_CALIBRATION_ADP_LENS_SHADING_CTL) / sizeof(_CALIBRATION_ADP_LENS_SHADING_CTL[0]), .width = sizeof(_CALIBRATION_ADP_LENS_SHADING_CTL[0] ) };
-static LookupTable calibration_lens_shading_adp = { .ptr = _CALIBRATION_LENS_SHADING_ADP, .rows = 1, .cols = sizeof( _CALIBRATION_LENS_SHADING_ADP ) / sizeof( _CALIBRATION_LENS_SHADING_ADP[0] ), .width = sizeof( _CALIBRATION_LENS_SHADING_ADP[0] )};
+static LookupTable calibration_adp_lens_shading_ctl = { .ptr = _CALIBRATION_ADP_LENS_SHADING_CTL, .rows = 1, .cols = sizeof(_CALIBRATION_ADP_LENS_SHADING_CTL) / sizeof(_CALIBRATION_ADP_LENS_SHADING_CTL[0]), .width = sizeof(_CALIBRATION_ADP_LENS_SHADING_CTL[0] ) };
+static LookupTable calibration_lens_shading_adp = { .ptr = _CALIBRATION_LENS_SHADING_ADP, .rows = 1, .cols = sizeof(_CALIBRATION_LENS_SHADING_ADP) / sizeof(_CALIBRATION_LENS_SHADING_ADP[0]), .width = sizeof(_CALIBRATION_LENS_SHADING_ADP[0] ) };
 static LookupTable calibration_lens_shading_adj = {.ptr = _CALIBRATION_LENS_SHADING_ADJ, .rows = sizeof( _CALIBRATION_LENS_SHADING_ADJ ) / sizeof( _CALIBRATION_LENS_SHADING_ADJ[0] ), .cols = sizeof( _CALIBRATION_LENS_SHADING_ADJ[0] ) / sizeof( _CALIBRATION_LENS_SHADING_ADJ[0][0] ), .width = sizeof( _CALIBRATION_LENS_SHADING_ADJ[0][0] )};
 static LookupTable calibration_dms_adj = {.ptr = _CALIBRATION_DMS_ADJ, .rows = sizeof( _CALIBRATION_DMS_ADJ ) / sizeof( _CALIBRATION_DMS_ADJ[0] ), .cols = sizeof( _CALIBRATION_DMS_ADJ[0] ) / sizeof( _CALIBRATION_DMS_ADJ[0][0] ), .width = sizeof( _CALIBRATION_DMS_ADJ[0][0] )};
 static LookupTable calibration_ccm_adj = {.ptr = _CALIBRATION_CCM_ADJ, .rows = sizeof( _CALIBRATION_CCM_ADJ ) / sizeof( _CALIBRATION_CCM_ADJ[0] ), .cols = sizeof( _CALIBRATION_CCM_ADJ[0] ) / sizeof( _CALIBRATION_CCM_ADJ[0][0] ), .width = sizeof( _CALIBRATION_CCM_ADJ[0][0] )};
@@ -1688,6 +1743,8 @@ static LookupTable calibration_cm_hue_via_h = { .ptr = _CALIBRATION_CM_HUE_VIA_H
 static LookupTable calibration_cm_hue_via_s = { .ptr = _CALIBRATION_CM_HUE_VIA_S, .rows = sizeof(_CALIBRATION_CM_HUE_VIA_S) / sizeof(_CALIBRATION_CM_HUE_VIA_S[0]), .cols = sizeof(_CALIBRATION_CM_HUE_VIA_S[0]) / sizeof(_CALIBRATION_CM_HUE_VIA_S[0][0]), .width = sizeof(_CALIBRATION_CM_HUE_VIA_S[0][0] ) };
 static LookupTable calibration_cm_hue_via_y = { .ptr = _CALIBRATION_CM_HUE_VIA_Y, .rows = sizeof(_CALIBRATION_CM_HUE_VIA_Y) / sizeof(_CALIBRATION_CM_HUE_VIA_Y[0]), .cols = sizeof(_CALIBRATION_CM_HUE_VIA_Y[0]) / sizeof(_CALIBRATION_CM_HUE_VIA_Y[0][0]), .width = sizeof(_CALIBRATION_CM_HUE_VIA_Y[0][0] ) };
 static LookupTable calibration_hlc_ctl = { .ptr = _CALIBRATION_HLC_CTL, .rows = 1, .cols = sizeof(_CALIBRATION_HLC_CTL) / sizeof(_CALIBRATION_HLC_CTL[0]), .width = sizeof(_CALIBRATION_HLC_CTL[0] ) };
+static LookupTable calibration_csc_coef = { .ptr = _CALIBRATION_CSC_COEF, .rows = 1, .cols = sizeof(_CALIBRATION_CSC_COEF) / sizeof(_CALIBRATION_CSC_COEF[0]), .width = sizeof(_CALIBRATION_CSC_COEF[0] ) };
+static LookupTable calibration_version = { .ptr = _CALIBRATION_VERSION, .rows = 1, .cols = sizeof(_CALIBRATION_VERSION) / sizeof(_CALIBRATION_VERSION[0]), .width = sizeof(_CALIBRATION_VERSION[0] ) };
 
 static LookupTable calibration_black_level = { .ptr = _CALIBRATION_BLACK_LEVEL, .rows = sizeof( _CALIBRATION_BLACK_LEVEL ) / sizeof( _CALIBRATION_BLACK_LEVEL[0] ), .cols = sizeof( _CALIBRATION_BLACK_LEVEL[0] ) / sizeof( _CALIBRATION_BLACK_LEVEL[0][0] ), .width = sizeof( _CALIBRATION_BLACK_LEVEL[0][0] )};
 static LookupTable calibration_noise_profile = { .ptr = _CALIBRATION_NOISE_PROFILE, .rows = sizeof(_CALIBRATION_NOISE_PROFILE) / sizeof(_CALIBRATION_NOISE_PROFILE[0]), .cols = sizeof(_CALIBRATION_NOISE_PROFILE[0]) / sizeof(_CALIBRATION_NOISE_PROFILE[0][0]), .width = sizeof(_CALIBRATION_NOISE_PROFILE[0][0] ) };
@@ -1735,7 +1792,11 @@ int dynamic_wdr_calibrations_init_imx290(aisp_calib_info_t *calib)
     calib->calibrations[CALIBRATION_AWB_CT_BG_COMPENSATE] = &calibration_awb_ct_bg_compensate;
     calib->calibrations[CALIBRATION_AWB_CT_WGT] = &calibration_awb_ct_wgt;
     calib->calibrations[CALIBRATION_AWB_CT_DYN_CVRANGE] = &calibration_awb_ct_dyn_cvrange;
+    calib->calibrations[CALIBRATION_AWB_WEIGHT_H]= &calibration_awb_weight_h;
+    calib->calibrations[CALIBRATION_AWB_WEIGHT_V] = &calibration_awb_weight_v;
     calib->calibrations[CALIBRATION_AE_CTL] = &calibration_ae_ctl;
+    calib->calibrations[CALIBRATION_HIGHLIGHT_DETECT] = &calibration_highlight_detect;
+    calib->calibrations[CALIBRATION_AWB_REF_REMOVE_LUT] = &calibration_awb_ref_remove_lut;
     calib->calibrations[CALIBRATION_AE_CORR_POS_LUT] = &calibration_ae_corr_pos_lut;
     calib->calibrations[CALIBRATION_AE_CORR_LUT] = &calibration_ae_corr_lut;
     calib->calibrations[CALIBRATION_AE_ROUTE] = &calibration_ae_route;
@@ -1784,7 +1845,7 @@ int dynamic_wdr_calibrations_init_imx290(aisp_calib_info_t *calib)
     calib->calibrations[CALIBRATION_PST_TNR_ALP_LUT] = &calibration_pst_tnr_alp_lut;
     calib->calibrations[CALIBRATION_COMPRESS_RATIO] = &calibration_compress_ratio;
     calib->calibrations[CALIBRATION_LENS_SHADING_CT_CORRECT] = &calibration_lens_shading_ct_correct;
-    calib->calibrations[CALIBRATION_ADP_LENS_SHADING_CTL] = &calibration_lens_shading_actl;
+    calib->calibrations[CALIBRATION_ADP_LENS_SHADING_CTL] = &calibration_adp_lens_shading_ctl;
     calib->calibrations[CALIBRATION_LENS_SHADING_ADP] = &calibration_lens_shading_adp;
     calib->calibrations[CALIBRATION_LENS_SHADING_ADJ] = &calibration_lens_shading_adj;
     calib->calibrations[CALIBRATION_DMS_ADJ] = &calibration_dms_adj;
@@ -1828,6 +1889,8 @@ int dynamic_wdr_calibrations_init_imx290(aisp_calib_info_t *calib)
     calib->calibrations[CALIBRATION_CM_HUE_VIA_S] = &calibration_cm_hue_via_s;
     calib->calibrations[CALIBRATION_CM_HUE_VIA_Y] = &calibration_cm_hue_via_y;
     calib->calibrations[CALIBRATION_HLC_CTL] = &calibration_hlc_ctl;
+    calib->calibrations[CALIBRATION_CSC_COEF] = &calibration_csc_coef;
+    calib->calibrations[CALIBRATION_VERSION] = &calibration_version;
 
     calib->calibrations[CALIBRATION_BLACK_LEVEL] = &calibration_black_level;
     calib->calibrations[CALIBRATION_CAC_RX] = &calibration_cac_rx;

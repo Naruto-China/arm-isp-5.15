@@ -144,12 +144,19 @@ typedef struct _ISP_AE_ATTR_S
     mbp_bool_e bEnDelay;
     uint32_t u32DelayCnt;
     uint32_t u32DelayTol;
+    uint32_t u32Wsdrlth;
     uint32_t u32LongClip;
     uint32_t u32ErAvgCoeff;
     mbp_bool_e bEnReduceFps;
     uint32_t u32ReduceFps;
     uint32_t u32ReduceFpsTh;
     uint32_t u32ReduceFpsLag;
+    uint32_t s32SysMaxIgain;
+    uint32_t u32SysMaxShuttime;
+    uint32_t s32SysMaxTotalGain;
+    uint32_t u32SysMaxRatio;
+    uint32_t u32SysCalibLux;
+    uint32_t u32SysFdbakDly;
     uint32_t u32EnableGdg;
 } ISP_AE_ATTR_S;
 
@@ -158,7 +165,7 @@ typedef struct {
     aml_isp_op_type enAGainOpType;
     aml_isp_op_type enDGainOpType;
     aml_isp_op_type enISPDGainOpType;
-    aml_isp_op_type enExposureRatio;
+    aml_isp_op_type enExposureOpType;
 
     uint32_t u32ExpTime;
     uint32_t u32AGain;
@@ -356,14 +363,14 @@ typedef struct {
 typedef struct {
     aml_ccm_str_lut   ccm_adj;
     aml_ccm_coef_lut  ccm_lut;
-} aml_isp_salutation_auto_s;
+} aml_isp_saturation_auto_s;
 
 typedef struct {
     aml_isp_op_type op_type;
     aml_isp_saturation_manual manual_attr;
     union {
     aml_isp_saturation_auto   auto_attr;
-    aml_isp_salutation_auto_s auto_attr_s;
+    aml_isp_saturation_auto_s auto_attr_s;
     };
 } aml_isp_saturation_attr;
 
@@ -377,31 +384,6 @@ typedef struct {
     int32_t wdr_mdeci_still_thd;
     int32_t wdr_forcelong_en;
     int32_t wdr_forcelong_thdmode;
-    int32_t wdr_flong1_thd0;
-    int32_t wdr_flong1_thd1;
-    int32_t wdr_expcomb_maxavg_mode;
-    int32_t wdr_expcomb_maxavg_ratio;
-    int32_t wdr_stat_flt_en;
-} aml_isp_wdr_ctl_attr;
-
-typedef struct {
-    uint32_t  wdr_adjust[30];
-    uint8_t  wdr_mdetc_loweight[160];
-    uint8_t  wdr_mdetc_hiweight[160];
-} aml_isp_wdr_lut_attr;
-
-typedef struct {
-    int32_t wdr_motiondect_en;
-    int32_t wdr_mdetc_withblc_mode;
-    int32_t wdr_mdetc_chksat_mode;
-    int32_t wdr_mdetc_motionmap_mode;
-    int32_t wdr_mdeci_chkstill_mode;
-    int32_t wdr_mdeci_addlong;
-    int32_t wdr_mdeci_still_thd;
-    int32_t wdr_forcelong_en;
-    int32_t wdr_forcelong_thdmode;
-    int32_t wdr_flong1_thd0;
-    int32_t wdr_flong1_thd1;
     int32_t wdr_expcomb_maxavg_mode;
     int32_t wdr_expcomb_maxavg_ratio;
     int32_t wdr_stat_flt_en;
@@ -431,13 +413,6 @@ typedef struct {
 } aml_isp_wdr_auto_attr;
 
 typedef struct {
-    int32_t wdr_abs_lexprat_int64[WDR_SPT_CHANNEL];
-    int32_t wdr_lmapratio_int64[WDR_SPT_CHANNEL-1][2];
-    int32_t wdr_lexpcomp_gr_int64[WDR_SPT_CHANNEL-1];
-    int32_t wdr_lexpcomp_gb_int64[WDR_SPT_CHANNEL-1];
-    int32_t wdr_lexpcomp_rg_int64[WDR_SPT_CHANNEL-1];
-    int32_t wdr_lexpcomp_bg_int64[WDR_SPT_CHANNEL-1];
-    int32_t wdr_lexpcomp_ir_int64[WDR_SPT_CHANNEL-1];
     int32_t sat_gr_thd;
     int32_t sat_gb_thd;
     int32_t sat_rg_thd;
@@ -462,64 +437,22 @@ typedef struct {
     int32_t mdeci_sexpstill_bg_lsthd[EXPO_MAX_CHANNEL];
     int32_t flong2_thd0[EXPO_MAX_CHANNEL];
     int32_t flong2_thd1[EXPO_MAX_CHANNEL];
-    int32_t wdr_expcomb_maxratio;
-    int32_t wdr_expcomb_blend_slope;
-    int32_t wdr_expcomb_blend_thd0;
-    int32_t wdr_expcomb_blend_thd1;
-    int32_t wdr_expcomb_ir_blend_slope;
-    int32_t wdr_expcomb_ir_blend_thd0;
-    int32_t wdr_expcomb_ir_blend_thd1;
-    int32_t wdr_expcomb_maxsat_gr_thd;
-    int32_t wdr_expcomb_maxsat_gb_thd;
-    int32_t wdr_expcomb_maxsat_rg_thd;
-    int32_t wdr_expcomb_maxsat_bg_thd;
-    int32_t wdr_expcomb_maxsat_ir_thd;
-    int32_t wdr_comb_expratio_int64[WDR_SPT_CHANNEL];
-    int32_t wdr_comb_exprratio_int1024[EXPO_MAX_CHANNEL];
-    int32_t wdr_comb_g_lsbarrier[WDR_SPT_CHANNEL];
-    int32_t wdr_comb_rg_lsbarrier[WDR_SPT_CHANNEL];
-    int32_t wdr_comb_bg_lsbarrier[WDR_SPT_CHANNEL];
-    int32_t wdr_comb_ir_lsbarrier[WDR_SPT_CHANNEL];
-    int32_t wdr_comb_maxratio;
     int32_t wdr_flong1_thd0;
     int32_t wdr_flong1_thd1;
 } aml_isp_wdr_manual_attr;
 
 // -------------- restructure ---------- //
 typedef struct {
-     uint32_t mdetc_ratio;
-	 uint32_t noise_gain;
-	 uint32_t noise_flor;
-} aml_wdr_adj_lut;
-
-typedef struct {
-     uint32_t mdetc_loweight[10];
-} aml_wdr_mdetc_loweight_lut;
-
-typedef struct {
-     uint32_t mdetc_hiweight[10];
-} aml_wdr_mdetc_hiweight_lut;
-
-typedef struct {
-    aml_wdr_adj_lut             wdr_adjust[16];
-    aml_wdr_mdetc_loweight_lut  wdr_mdetc_loweight[16];
-    aml_wdr_mdetc_hiweight_lut  wdr_mdetc_hiweight[16];
-} aml_isp_wdr_lut_attr_s;
-
-typedef struct {
     aml_isp_op_type                    op_type;
     aml_isp_wdr_manual_attr            wdr_manual;
     aml_isp_wdr_auto_attr              wdr_auto;
-    union {
-    aml_isp_wdr_lut_attr               wdr_lut;
-    aml_isp_wdr_lut_attr_s             wdr_lut_s;
-    };
 } aml_isp_wdr_attr;
 
 typedef struct {
-    int32_t ltm_damper64;                   /**< u7, tiir blending coef*/
-    int32_t ltm_lmin_alpha;                 /**< u6, lmin global and local blend ratio , norm to 64 as 1.0*/
-    int32_t ltm_lmax_alpha;                 /**< u6, lmax global and local blend ratio , norm to 64 as 1.0*/
+    int32_t ltm_auto_en;
+    int32_t ltm_damper64;
+    int32_t ltm_lmin_alpha;
+    int32_t ltm_lmax_alpha;
     int32_t ltm_hi_gm_u7;
     int32_t ltm_lo_gm_u6;
     int32_t ltm_dtl_ehn_en;
@@ -529,29 +462,27 @@ typedef struct {
     int32_t ltm_lmax_med_en;
     int32_t ltm_bld_lvl_adp_en;
     int32_t ltm_lo_hi_gm_auto;
+    int32_t ltm_luma_alpha;
 } aml_isp_drc_auto_attr;
 
 typedef struct {
     uint32_t ltm_dark_noise;
     uint32_t reg_ltm_lr_u28;
-    int32_t reg_ltm_lmin_blk[DRC_STA_BLK_REG_NUM];
-    int32_t reg_ltm_lmax_blk[DRC_STA_BLK_REG_NUM];
+    int32_t reg_ltm_lmin_blk[96];
+    int32_t reg_ltm_lmax_blk[96];
     int32_t ltm_expblend_thd0_u14;
     int32_t ltm_expblend_thd1_u14;
     int32_t ltm_gmin_total;
     int32_t ltm_gmax_total;
-    int32_t ltm_glbwin_hstart;
-    int32_t ltm_glbwin_hend;
-    int32_t ltm_glbwin_vstart;
-    int32_t ltm_glbwin_vend;
     int32_t ltm_lgm;
     int32_t ltm_hgm;
+    int32_t ltm_lh_gm_auto;
     int32_t ltm_pow_y_u20;
     uint32_t tmp_reg_ltm_pow_divisor;
 } aml_isp_drc_manual_attr;
 
 typedef struct {
-    int32_t ltm_hist_blk65[LTM_HIST_BLK];
+    uint32_t ltm_hist_blk65[LTM_HIST_BLK];
 } aml_isp_ltm_hist_attr;
 
 typedef struct {
@@ -562,33 +493,23 @@ typedef struct {
 } aml_isp_drc_attr;
 
 typedef struct {
-    int ltm_lo_hi_gm[20];
+    int ltm_lo_gamma_str;
+    int ltm_ho_gamma_str;
+} aml_isp_drc_gamma_lut;
+
+typedef struct {
+    aml_isp_drc_gamma_lut lo_hi_gm[ISO_NUM_MAX];
 } aml_isp_drc_gamma_auto_attr;
 
 typedef struct {
-    int expo_mode;
     int ltm_lo_gamma_str;
     int ltm_ho_gamma_str;
-    int ltm_lo_gain;
-    int ltm_ho_gain;
 } aml_isp_drc_gamma_manual_attr;
 
-// -------------- restructure ---------- //
 typedef struct {
-    int low;
-    int high;
-} aml_ltm_lo_hi_gm_lut;
-
-typedef struct {
-    aml_ltm_lo_hi_gm_lut ltm_lo_hi_gm[16];
-} aml_isp_drc_gamma_auto_attr_s;
-
-typedef struct {
+    aml_isp_op_type                op_type;
     aml_isp_drc_gamma_manual_attr  DrcGammaManual;
-    union {
-        aml_isp_drc_gamma_auto_attr    DrcGammaAuto;
-        aml_isp_drc_gamma_auto_attr_s  DrcGammaAutoS;
-    };
+    aml_isp_drc_gamma_auto_attr    DrcGammaAuto;
 } aml_isp_drc_gamma_attr;
 
 /* Defines the ISP dehaze attribute */
@@ -601,15 +522,17 @@ typedef struct {
     int32_t dhz_cc_en;
     int32_t dhz_sky_prot_en;
     int32_t dhz_sky_prot_stre;
+    int32_t dhz_str_fixed;
 } aml_isp_dehaze_auto_attr;
 
 typedef struct {
     int ram_dhz_nodes[96*5];
-    int reg_dhz_sky_prot_stre;
-    int reg_dhz_atmos_light;
-    int reg_dhz_atmos_light_inver;
-    int reg_dhz_sky_prot_stre_offset;
-    int reg_dhz_satura_ratio_sky;
+    int32_t reg_dhz_sky_prot_stre;
+    int32_t reg_dhz_atmos_light;
+    int32_t reg_dhz_atmos_light_inver;
+    int32_t reg_dhz_sky_prot_stre_offset;
+    int32_t reg_dhz_satura_ratio_sky;
+    int32_t reg_dhz_str_fixed;
 } aml_isp_dehaze_manual_attr;
 
 typedef struct {
@@ -619,49 +542,39 @@ typedef struct {
 } aml_isp_dehaze_attr;
 
 typedef struct {
-    int lc_nodes_debug;
-    uint32_t lc_damper64;                 //u7, tiir blending coef
+    int32_t lc_blkblend_mode;
+    int32_t lc_lmtrat_minmax;
+    int32_t lc_contrast_low;
+    int32_t lc_contrast_hig;
+    int32_t lc_cc_en;
+    int32_t lc_ypkbv_slope_lmt_1;
+    int32_t lc_ypkbv_slope_lmt_0;
+    int32_t lc_str_fixed;
+    uint32_t lc_damper64;
+    int32_t lc_nodes_alpha;
+    int32_t lc_single_bin_th;
+    int32_t lc_single_bin_prot_en;
+    int32_t lc_single_bin_prot_strgth;
+} aml_isp_ldci_ctl_attr;
 
-    int lc_nodes_alpha;              //u6, lmin global and local blend ratio , norm to 64 as 1.0
-    int lc_curv_nodes_hlpf;     //oou2, horizontal lpf of the ram_curve_nodes_lpf_hw, 0: no LPF, 1= [1 2 1]; 2: [1 2 2 2 1]/8
-    int lc_curv_nodes_vlpf;     //oou2, vertical lpf of the ram_curve_nodes_lpf_hw, 0: no LPF, 1= [1 2 1]; 2: [1 2 2 2 1]/8
+typedef struct {
+    int32_t lmt0;
+    int32_t lmt1;
+} aml_isp_ldci_strength_attr;
 
-    //deblock
-    int lc_db_en;                     //u1
-    int lc_db_pk_valid ;              //u8 threshold to compare to bin to get number of valid bins
-    int lc_db_yminV_rat_th;        //u10, block effect thd of single portion of block of lpf
-    int lc_db_yminV_mxbni_th;    //u5, block effect pkbin's thd of block of lpf
-    int lc_db_ypkBV_rat_th;        //u10, block effect thd of single portion of block of lpf
-    int lc_db_ypkBV_mxbni_th;    //u5, block effect pkbin's thd of block of lpf
-
-    //2pks patch
-    int lc_2pks_vld;                    //u6, 2pks patch val thd, norm 64 as 1
-    int lc_2pks_idx_dst_th;             //u4, 2pks patch idx distance thd,
-    int lc_2pks_alp;                    //u6, 2pks patch alpha gain
-    int lc_2pks_ypkbv_en;               //u1, 2pks patch ypkbv enbale
-    int lc_2pks_ymaxv_en;               //u1, 2pks patch ymaxv enbale
-    int lc_2pks_yminv_en;               //u1, 2pks patch yminv enbale
-
-    // smlf boost
-    int lc_smlf_bst_en;                 //u1, lc_smlf_bst_en
-
-    int lc_bld_lvl_adp_en;
-    int lc_bld_lvl_lsft;                //u3, blend level left shift val
-    int32_t lc_str_dk_prc;
-    int32_t lc_str_brt_prc;
-    int32_t lc_str_min_dk;
-    int32_t lc_str_max_dk;
-    int32_t lc_str_pD_cut_min;
-    int32_t lc_str_pD_cut_max;
-    int32_t lc_str_dark_contrast_min;
-    int32_t lc_str_dark_contrast_max;
-    int32_t lc_str_dark_prc_gain_target;
-    int32_t lc_str_lc_max_gain;
-    int lc_contrast_level;          //u12, level to adjust contrast
+typedef struct {
+    aml_isp_ldci_ctl_attr lc_ctl;
+    aml_isp_ldci_strength_attr lc_strength[ISO_NUM_MAX];
 } aml_isp_ldci_auto_attr;
 
 typedef struct {
     int32_t curve_nodes[96*6];
+    uint32_t reg_lc_histvld_thrd;
+    uint32_t reg_lc_blackbar_mute_thrd;
+    uint32_t reg_lc_pk_vld;
+    uint32_t reg_lc_pk_no_trd_mrgn;
+    uint32_t reg_lc_pk_1stb_th;
+    uint32_t lc_str_fixed;
 } aml_isp_ldci_manual_attr;
 
 typedef struct {
@@ -694,6 +607,10 @@ typedef struct {
     uint32_t dnlp_ble_en;
     uint32_t dnlp_scn_chg_th;
     uint32_t dnlp_mtdbld_rate;
+    uint32_t dnlp_str_fixed;
+    int32_t dnlp_by_iso_luma;
+    int32_t dnlp_scurv_gain_mode;
+    int32_t dnlp_luma_dbg;
 } aml_isp_dnlp_auto_attr;
 
 typedef struct {
@@ -716,37 +633,7 @@ typedef struct {
     uint16_t peaking_os_up;/**< peaking overshoot up */
     uint16_t peaking_os_down;/**< peaking overshoot dn */
     uint16_t peaking_nr_range;
-} aml_sharpen_adj_attr;
-
-typedef struct  {
-    int32_t ltm_shrp_base_alpha;
-    int32_t ltm_shrp_r;
-    int32_t ltm_shrp_s;
-    int32_t ltm_shrp_smth_lvlsft;
-} aml_sharpen_ltm_attr;
-
-typedef struct  {
-    aml_sharpen_adj_attr peaking_adj;
-    int32_t peaking_gain_adp_motion[8];
-    int32_t peaking_gain_adp_grad1[5];
-    int32_t peaking_gain_adp_grad2[5];
-    int32_t peaking_gain_adp_grad3[5];
-    int32_t peaking_gain_adp_grad4[5];
-    int32_t peaking_gain_adp_luma[9];
-    aml_sharpen_ltm_attr  shrp_ltm;
-} aml_sharpen_ltm_manual_attr;
-
-typedef struct {
-    uint16_t peaking_adjust[ISO_NUM_MAX*6];
-    uint32_t ltm_sharp_adj[ISO_NUM_MAX*4];
-    uint8_t pk_gain_vs_luma_lut[ISO_NUM_MAX*9];
-    uint8_t pk_cir_flt1_gain[ISO_NUM_MAX*5];
-    uint8_t pk_cir_flt2_gain[ISO_NUM_MAX*5];
-    uint8_t pk_drt_flt1_gain[ISO_NUM_MAX*5];
-    uint8_t pk_drt_flt2_gain[ISO_NUM_MAX*5];
-    uint8_t pk_flt1_motion_adp_gain[ISO_NUM_MAX*8];
-    uint8_t pk_flt2_motion_adp_gain[ISO_NUM_MAX*8];
-} aml_isp_sharpen_auto_attr;
+} aml_isp_sharpen_manual_attr;
 
 typedef struct {
     int32_t pk_flt1_v1d[3];
@@ -758,14 +645,21 @@ typedef struct {
     int32_t pk_flt2_2d[3][4];
     int32_t pk_motion_adp_en;
     int32_t pk_dejaggy_en;
-} aml_isp_sharpen_ctl_attr;
+    int32_t pk_debug_mode;
+    int32_t pk_osht_hsize;
+    int32_t pk_osht_vsize;
+} aml_isp_sharpen_auto_attr;
 
 typedef struct {
     aml_isp_op_type                 op_type;
-    aml_isp_sharpen_ctl_attr        sharpen_ctl;
-    aml_sharpen_ltm_manual_attr     sharpen_manual;
+    aml_isp_sharpen_manual_attr     sharpen_manual;
     aml_isp_sharpen_auto_attr       sharpen_auto;
 } aml_isp_sharpen_attr;
+typedef struct {
+    int32_t rawcnr_totblk_higfrq_en;
+    int32_t rawcnr_curblk_higfrq_en;
+    int32_t rawcnr_ishigfreq_mode;
+} aml_isp_rawcnr_auto_attr;
 
 typedef struct {
     uint16_t rawcnr_sad_cor_np_gain;
@@ -785,45 +679,9 @@ typedef struct {
 } aml_isp_rawcnr_manual_attr;
 
 typedef struct {
-    uint16_t rawcnr_adj[10*10];
-    uint8_t rawcnr_meta_gain_lut[10*8];
-    int8_t rawcnr_sps_csig_weight5x5[10*25];
-    int32_t rawcnr_ctl[3];
-} aml_isp_rawcnr_auto_attr;
-
-// -------------- restructure ---------- //
-typedef struct {
-    uint16_t sad_cor_np_gain;
-    uint16_t sublk_sum_dif_thd[2];
-    uint16_t curblk_sum_difnxn_thd[2];
-    uint16_t ya_min;
-    uint16_t ya_max;
-    uint16_t ca_min;
-    uint16_t ca_max;
-    uint16_t reserve;
-} aml_rawcnr_adj_lut;
-
-typedef struct {
-    uint8_t meta_gain[8];
-} aml_rawcnr_meta_gain_lut;
-
-typedef struct {
-    int8_t sps_csig_weight[25];
-} aml_sps_csig_weight_lut;
-
-typedef struct {
-    aml_rawcnr_adj_lut       rawcnr_adj[10];
-    aml_rawcnr_meta_gain_lut rawcnr_meta_gain_lut[10];
-    aml_sps_csig_weight_lut  rawcnr_sps_csig_weight5x5[10];
-} aml_isp_rawcnr_auto_attr_s;
-
-typedef struct {
     aml_isp_op_type               op_type;
     aml_isp_rawcnr_manual_attr    rawcnr_manual;
-    union {
     aml_isp_rawcnr_auto_attr      rawcnr_auto;
-    aml_isp_rawcnr_auto_attr_s    rawcnr_auto_s;
-    };
 } aml_isp_nr_rawcnr_attr;
 
 typedef struct {
@@ -843,84 +701,23 @@ typedef struct {
 } aml_isp_psnr_adj_attr;
 
 typedef struct {
-    uint32_t snr_np_lut16_glb_adj;
-    uint32_t snr_meta2alp_glb_adj;
-    uint32_t snr_meta_gain_glb_adj;
-    uint32_t snr_wt_luma_gain_glb_adj;
-    uint32_t snr_grad_gain_glb_adj;
-    uint32_t snr_sad_th_mask_gain_glb_adj;
+    uint16_t snr_np_lut16_glb_adj;
+    uint16_t snr_meta2alp_glb_adj;
+    uint16_t snr_meta_gain_glb_adj;
+    uint16_t snr_wt_luma_gain_glb_adj;
+    uint16_t snr_grad_gain_glb_adj;
+    uint16_t snr_sad_th_mask_gain_glb_adj;
 } aml_isp_snr_glb_adj_attr;
 
 typedef struct {
     aml_isp_snr_adj_attr  snr_adj;
     aml_isp_snr_glb_adj_attr snr_glb_adj;
-    uint8_t snr_cur_wt[8];
     uint8_t snr_wt_luma_gain[8];
     uint8_t snr_sad_meta2alp[8];
     uint8_t snr_meta_adj[8];
+    uint16_t snr_cur_wt[8];
     aml_isp_psnr_adj_attr psnr_adj;
 } aml_isp_snr_manual_t;
-
-typedef struct {
-    int16_t snr_adj[10*16];
-    uint32_t snr_glb_adj[6];
-    int16_t snr_cur_wt[10*8];
-    uint8_t snr_wt_luma_gain[10*8];
-    uint8_t snr_sad_meta2alp[10*8];
-    uint8_t snr_meta_adj[10*8];
-    uint16_t psnr_adj[10*2];
-} aml_isp_snr_auto_t;
-
-// -------------- restructure ---------- //
-typedef struct {
-    int16_t weight;
-    int16_t np_adj;
-    int16_t cor_profile_adj;
-    int16_t cor_profile_ofst;
-    int16_t sad_wt_sum_th[2];
-    int16_t var_flat_th_x[3];
-    int16_t var_flat_th_y[3];
-    int16_t sad_meta_ratio[4];
-} aml_snr_adj_lut;
-
-typedef struct {
-    uint16_t post_nr_y;
-    uint16_t post_nr_chroma;
-} aml_psnr_adj_lut;
-
-typedef struct {
-    uint8_t snr_cur_wt[8];
-} aml_snr_cur_wt_lut;
-
-typedef struct {
-    uint8_t snr_wt_luma_gain[8];
-} aml_snr_wt_luma_gain_lut;
-
-typedef struct {
-    uint8_t snr_sad_meta2alp[8];
-} aml_snr_sad_meta2alp_lut;
-
-typedef struct {
-    uint8_t snr_meta_adj[8];
-} aml_snr_meta_adj_lut;
-
-typedef struct {
-    uint32_t snr_np_lut16_glb_adj;
-    uint32_t snr_meta2alp_glb_adj;
-    uint32_t snr_meta_gain_glb_adj;
-    uint32_t snr_wt_luma_gain_glb_adj;
-    uint32_t snr_grad_gain_glb_adj;
-    uint32_t snr_sad_th_mask_gain_glb_adj;
-} aml_snr_glb_adj_lut;
-
-typedef struct {
-    aml_snr_adj_lut          snr_adj[10];
-    aml_snr_glb_adj_lut      snr_glb_adj;
-    aml_snr_cur_wt_lut       snr_cur_wt[10];
-    aml_snr_wt_luma_gain_lut snr_wt_luma_gain[10];
-    aml_snr_sad_meta2alp_lut snr_sad_meta2alp[10];
-    aml_snr_meta_adj_lut     snr_meta_adj[10];
-} aml_isp_snr_auto_s;
 
 typedef struct {
     int32_t snr_luma_adj_en;
@@ -938,25 +735,36 @@ typedef struct {
     int32_t snr_wt_var_th_x[3];
     int32_t snr_wt_var_th_y[3];
     int32_t snr_mask_adj[8];
-} aml_isp_snr_ctl_s;
+} aml_isp_snr_auto_t;
 
 typedef struct {
     aml_isp_op_type         op_type;
-    aml_isp_snr_ctl_s       snr_ctl;
     aml_isp_snr_manual_t    snr_manual;
-    union {
     aml_isp_snr_auto_t      snr_auto;
-    aml_isp_snr_auto_s      snr_auto_s;
-    };
 } aml_isp_nr_snr_attr;
 
 typedef struct {
-    int16_t tnr_np_adj;
+    int32_t tnr_ma_mix_th_x[3];
+    int32_t tnr_rad_tnr0_en;
+    int32_t tnr_ma_sad_pdtl4_x[3];
+    int32_t tnr_ma_sad_pdtl4_y[3];
+    int32_t tnr_ma_adp_dtl_mix_th_nfl;
+    int32_t tnr_ma_sad_th_mask_gain[4];
+    int32_t tnr_ma_mix_th_mask_gain[4];
+    int32_t tnr_ma_mix_ratio;
+    int32_t tnr_ma_sad_luma_adj_x[4];
+    int32_t tnr_ma_sad_luma_adj_y[5];
+    int32_t tnr_ma_mix_th_iso_gain;
+} aml_isp_tnr_auto_attr;
+
+typedef struct {
     int16_t tnr_sad_cor_np_gain;
     int16_t tnr_sad_cor_np_ofst;
     int16_t tnr_ma_mix_h_th_gain[4];
     int16_t tnr_ma_mix_h_th_y[3];
     int16_t tnr_ma_mix_l_th_y[3];
+    int16_t tnr_ma_sad_var_th_x[3];
+    int16_t tnr_ma_sad_var_th_y[3];
     int16_t tnr_me_sad_cor_np_gain;
     int16_t tnr_me_sad_cor_np_ofst;
     int16_t tnr_me_meta_sad_th0[3];
@@ -964,10 +772,10 @@ typedef struct {
 } aml_isp_tnr_adj_attr;
 
 typedef struct {
-    uint32_t tnr_ma_mix_h_th_glb_adj;
-    uint32_t tnr_ma_np_lut16_glb_adj;
-    uint32_t tnr_ma_sad2alp_glb_adj;
-    uint32_t tnr_mc_meta2alp_glb_adj;
+    uint16_t tnr_ma_mix_h_th_glb_adj;
+    uint16_t tnr_ma_np_lut16_glb_adj;
+    uint16_t tnr_ma_sad2alp_glb_adj;
+    uint16_t tnr_mc_meta2alp_glb_adj;
 } aml_isp_tnr_glb_attr;
 
 typedef struct {
@@ -979,58 +787,12 @@ typedef struct {
 } aml_isp_tnr_manual_attr;
 
 typedef struct {
-    uint16_t tnr_adj[10*8];
-    uint32_t tnr_glb_adj[10*4];
-    uint8_t ma_sad2alpha[10*64];
-    uint8_t mc_meta2alpha[10*64];
-    uint8_t ptnr_alp_lut[10*8];
-} aml_isp_tnr_auto_attr;
-
-// -------------- restructure ---------- //
-typedef struct {
-    int16_t np_adj;
-    int16_t tnr_np_gain;
-    int16_t tnr_np_ofst;
-    int16_t ma_mix_h_th_gain[4];
-    int16_t me_sad_cor_np_gain;
-} aml_tnr_adj_lut;
-
-typedef struct {
-    uint32_t tnr_ma_mix_h_th_glb_adj;
-    uint32_t tnr_ma_np_lut16_glb_adj;
-    uint32_t tnr_ma_sad2alp_glb_adj;
-    uint32_t tnr_mc_meta2alp_glb_adj;
-} aml_tnr_glb_adj_lut;
-
-typedef struct {
-    uint8_t tnr_ma_sad2alpha[64];
-} aml_ma_sad2alpha_lut;
-
-typedef struct {
-    uint8_t tnr_mc_meta2alpha[64];
-} aml_mc_meta2alpha_lut;
-
-typedef struct {
-    uint8_t ptnr_alp_lut[8];
-} aml_ptnr_alp_lut;
-
-typedef struct {
-    aml_tnr_adj_lut       tnr_adj[10];
-    aml_tnr_glb_adj_lut   tnr_glb_adj[10];
-    aml_ma_sad2alpha_lut  ma_sad2alpha[10];
-    aml_mc_meta2alpha_lut mc_meta2alpha[10];
-    aml_ptnr_alp_lut      ptnr_alp_lut[10];
-} aml_isp_tnr_auto_attr_s;
-
-typedef struct {
     aml_isp_op_type         op_type;
     aml_isp_tnr_manual_attr tnr_manual;
-    union {
     aml_isp_tnr_auto_attr   tnr_auto;
-    aml_isp_tnr_auto_attr_s tnr_auto_s;
-    };
 } aml_isp_nr_tnr_attr;
 
+//-------------------------------------
 typedef struct {
     int32_t cnr_map_xthd;
     int32_t cnr_map_kappa;
@@ -1038,10 +800,7 @@ typedef struct {
     int32_t cnr_map_ythd1;
     int32_t cnr_map_norm;
     int32_t cnr_map_str;
-    int32_t cnr_luma_osat_thd;
-    int32_t cnr_adp_desat_hrz;
-    int32_t cnr_adp_desat_vrt;
-} aml_isp_cnr_ctl_attr;
+} aml_isp_cnr_auto_attr;
 
 typedef struct {
     uint16_t cnr_wt;
@@ -1049,7 +808,7 @@ typedef struct {
     uint16_t cnr_umargin_dw;
     uint16_t cnr_vmargin_up;
     uint16_t cnr_vmargin_dw;
-    uint16_t reserve[3];
+    uint16_t alp_mode;
 } aml_isp_cnr_adj_attr;
 
 typedef struct {
@@ -1057,50 +816,56 @@ typedef struct {
 } aml_isp_cnr_manual_attr;
 
 typedef struct {
-    uint16_t    cnr_adj[10*8];
-} aml_isp_cnr_auto_attr;
-
-// -------------- restructure ---------- //
-typedef struct {
-    uint8_t cnr_weight;
-    uint8_t umargin_up;
-    uint8_t umargin_dw;
-    uint8_t vmargin_up;
-    uint8_t vmargin_dw;
-    uint8_t reserve[3];
-} aml_cnr_adj_lut;
-
-typedef struct {
-    aml_cnr_adj_lut    cnr_adj[10];
-} aml_isp_cnr_auto_attr_s;
-
-typedef struct {
     aml_isp_op_type         op_type;
-    aml_isp_cnr_ctl_attr    cnr_ctl;
     aml_isp_cnr_manual_attr cnr_manual;
-    union {
     aml_isp_cnr_auto_attr   cnr_auto;
-    aml_isp_cnr_auto_attr_s cnr_auto_s;
-    };
 } aml_isp_nr_cnr_attr;
+
+//---------------------------------------
+typedef struct {
+    int32_t purple_luma_osat_thd;
+    int32_t pfr_mode;
+} aml_isp_purple_auto_attr;
+
+typedef struct {
+    uint16_t purple_wt;
+    uint16_t purple_umargin_up;
+    uint16_t purple_umargin_dw;
+    uint16_t purple_vmargin_up;
+    uint16_t purple_vmargin_dw;
+    uint16_t purple_cst_thd;
+    uint16_t purple_desat_en;
+} aml_isp_purple_adj_attr;
+
+typedef struct {
+    aml_isp_purple_adj_attr  purple_adj;
+} aml_isp_purple_manual_attr;
+
+typedef struct {
+    aml_isp_op_type            op_type;
+    aml_isp_purple_manual_attr purple_manual;
+    aml_isp_purple_auto_attr   purple_auto;
+} aml_isp_purple_attr;
 
 typedef struct {
     uint16_t dms_plp_alp;
-    uint16_t dms_detail_non_dir_str;
+    uint16_t detail_non_dir_th_min;
+    uint16_t detail_non_dir_th_max;
 } aml_isp_dms_manual_attr;
 
 typedef struct {
-    uint16_t    dms_adj[10*2];
+    uint16_t    dms_adj[ISO_NUM_MAX*3];
 } aml_isp_dms_auto_attr;
 
 // -------------- restructure ---------- //
 typedef struct {
-    uint16_t    plp_alp;
-    uint16_t    detail_non_dir_str;
+    uint16_t plp_alp;
+    uint16_t detail_non_dir_th_min;
+    uint16_t detail_non_dir_th_max;
 } aml_dms_adj_lut;
 
 typedef struct {
-    aml_dms_adj_lut    dms_adj[16];
+    aml_dms_adj_lut    dms_adj[ISO_NUM_MAX];
 } aml_isp_dms_auto_attr_s;
 
 typedef struct {
@@ -1112,12 +877,13 @@ typedef struct {
     };
 } aml_isp_dms_attr;
 
+//--------------------------------------
 typedef struct {
     uint16_t np_lut[16];
 } aml_isp_np_manual_attr;
 
 typedef struct {
-    uint16_t np_lut[8*16];
+    uint16_t np_lut[9*16];
 } aml_isp_np_auto_attr;
 
 typedef struct {
@@ -1212,26 +978,26 @@ typedef struct {
 } aml_isp_radial_shading_lut_attr;
 
 typedef struct {
-    uint8_t ge_stat_edge_thd;
-    uint8_t ge_hv_thrd;
-    uint8_t ge_hv_wtlut[4];
-    uint8_t reserve[2];
+    uint16_t ge_stat_edge_thd;
+    uint16_t ge_hv_thrd;
+    uint16_t ge_hv_wtlut[4];
+    uint16_t reserve[2];
 } aml_isp_cr_manual_attr;
 
 typedef struct {
-    uint8_t ge_adj[10*8];
+    uint16_t ge_adj[ISO_NUM_MAX*8];
 } aml_isp_cr_auto_attr;
 
 // -------------- restructure ---------- //
 typedef struct {
-    uint8_t ge_stat_edge_thd;
-    uint8_t ge_hv_thrd;
-    uint8_t ge_hv_wtlut[4];
-    uint8_t reserve[2];
+    uint16_t ge_stat_edge_thd;
+    uint16_t ge_hv_thrd;
+    uint16_t ge_hv_wtlut[4];
+    uint16_t reserve[2];
 } aml_ge_adj_lut;
 
 typedef struct {
-    aml_ge_adj_lut ge_adj[10];
+    aml_ge_adj_lut ge_adj[ISO_NUM_MAX];
 } aml_isp_cr_auto_attr_s;
 
 typedef struct {
@@ -1243,6 +1009,7 @@ typedef struct {
     };
 } aml_isp_cr_attr;
 
+//--------------------------------------
 typedef struct {
     int32_t     blc_r;
     int32_t     blc_gr;
@@ -1311,7 +1078,7 @@ typedef struct {
     aml_isp_colormatrix_manual_s manual_attr;
     union {
     aml_isp_colormatrix_auto_s   auto_attr;
-    aml_isp_salutation_auto_s    auto_attr_s;
+    aml_isp_saturation_auto_s    auto_attr_s;
     };
 } aml_isp_colormatrix_attr;
 
@@ -1340,16 +1107,52 @@ typedef struct {
     uint32_t flkr_det_fft_norm;
     uint32_t flkr_det_fft_valid_thrd;
     uint32_t flkr_det_sns_exp_info_adj_gain;
+    uint32_t flkr_det_jdg_ratio;
+    uint32_t flkr_det_sum_pdif_th;
+    uint32_t flkr_det_scan_ofst;
+    uint32_t flkr_det_wave_ofst;
+    uint32_t flkr_det_ae_diff_th;
+    uint32_t flkr_det_noflkr_cnt_th;
+    uint32_t flkr_det_pdif_ratio;
 } aml_isp_calcflicker_input_attr;
 
 typedef struct {
     uint32_t flkr_det_fft_flag;
     uint32_t flkr_det_50hz;
     uint32_t flkr_det_cnt;
+    uint32_t flkr_det_r50;
+    uint32_t flkr_det_r60;
 } aml_isp_calcflicker_output_attr;
 
-typedef struct
-{
+typedef struct {
+    uint32_t ae_roi_en;            /**< u1, AE ROI0 work mode. 0:off 1:on */
+    uint32_t ae_roi_wgt;           /**< u4, ROI0 zone exposure weight */
+    uint32_t ae_roi_x_st;          /**< u14, ROI0 rectangle zone start position x  */
+    uint32_t ae_roi_y_st;          /**< u14, ROI0 rectangle zone start position y  */
+    uint32_t ae_roi_width;         /**< u14, ROI0 rectangle zone width  */
+    uint32_t ae_roi_height;        /**< u14, ROI0 rectangle zone height */
+    uint32_t ae_roi_target;
+} aisp_ae_roi;
+
+typedef struct {
+    aisp_ae_roi ae_roi[16];
+} aml_isp_ae_roi_attr;
+
+typedef struct {
+    uint32_t region_en;
+    uint32_t awb_xstart;
+    uint32_t awb_xsize;
+    uint32_t awb_ystart;
+    uint32_t awb_ysize;
+    uint32_t rgain;
+    uint32_t bgain;
+} aisp_awb_region;
+
+typedef struct {
+    aisp_awb_region awb_region[2];
+} aml_isp_awb_region_attr;
+
+typedef struct {
     int16_t u32AwbRgPos[15];
     int16_t u32AwbBgPos[15];
     int16_t u32AwbMeshDisTab[225];
@@ -1357,8 +1160,7 @@ typedef struct
 
 typedef ISP_AWB_INDOOR_OUTDOOR_STATUS_E    aml_isp_awb_indoor_outdoor_status_e;
 
-typedef struct
-{
+typedef struct {
     uint16_t u16Rgain;
     uint16_t u16Grgain;
     uint16_t u16Gbgain;
@@ -1369,12 +1171,23 @@ typedef struct
     int32_t au32CCM[CCM_MATRIX_SIZE];
 } aml_isp_wb_info_attr;
 
-typedef struct
-{
+typedef struct {
+    uint32_t pack0;
+    uint32_t pack1;
+} aml_isp_wb_pack_t;
+
+typedef struct {
+    aml_isp_wb_pack_t stData[4*32*24];
+    uint32_t zones_num;
+} aml_isp_wb_stats_attr;
+
+typedef struct {
     uint32_t ae_converged;
     uint32_t ae_slight_change;
     int32_t  ae_sys_expos_log2;
     uint32_t ae_sys_ratio;
+    uint32_t ae_sys_min_ratio;
+    uint32_t ae_sys_expos_full;
     uint32_t ae_sns_expos_lines;
     uint32_t ae_sns_sexpos_lines;
     uint32_t ae_sns_vsexpos_lines;
@@ -1388,7 +1201,38 @@ typedef struct
     int32_t  ae_isp_gain;
     int32_t  ae_total_gain;
     int32_t  ae_lowlight_enh_ratio;
+    uint32_t ae_daylight;
 } aml_isp_exp_info_attr;
+
+typedef struct {
+    int32_t dn_light_control; //1:0n, 0: off
+    int32_t dn_hist_stat_mode; //0: average based AE, 1: weight
+    int32_t dn_predict_day_thr;  //default is 50
+    int32_t dn_predict_night_thr; //default is 50
+    int32_t dn_det_tran_ratio; //default 16/128
+    int32_t dn_det_day_thr;    //default 60
+    int32_t dn_det_night_thr;  //default 240
+    int32_t dn_det_light_ct_low;
+    int32_t dn_det_light_ct_high;
+    int32_t dn_wdr_mean_ratio;     //default 280, normalize with 256
+    int32_t dn_rg_blk_sum_thr;     //low thr of block sum based on rg info
+    int32_t dn_rg_thr;
+    int32_t dn_bg_thr;
+    int32_t dn_debug; // 0:not print 1:print
+} aml_isp_ir_attr;
+
+
+//--------------------------------
+typedef struct {
+    uint8_t dpc_cor_en;
+    uint8_t dpc_avg_dev_mode;
+    uint8_t dpc_avg_mode;
+    uint8_t dpc_avg_thd2_en;
+    uint8_t dpc_highlight_en;
+    uint8_t dpc_correct_mode;
+    uint8_t dpc_write_to_lut;
+    uint8_t reserve;
+} aml_isp_dpc_auto_attr;
 
 typedef struct {
     uint16_t dpc_avg_gain_l0;
@@ -1406,35 +1250,25 @@ typedef struct {
 } aml_isp_dpc_manual_attr;
 
 typedef struct {
-    aml_isp_dpc_manual_attr dpc_manual[10];
-} aml_isp_dpc_auto_attr;
-
-typedef struct
-{
     aml_isp_op_type         enOpType;
     aml_isp_dpc_manual_attr manual_attr;
     aml_isp_dpc_auto_attr   auto_attr;
 } aml_isp_dpc_attr;
 
+//-----------------------------------------
 typedef struct {
     int32_t cm_sat;
     int32_t cm_hue;
     int32_t cm_contrast;
     int32_t cm_brightness;
-} aml_isp_cm2_ctl_attr;
-
-typedef struct {
-    int8_t cm_adj_sat_via_y[9];
 } aml_isp_cm2_manual_attr;
 
 typedef struct {
-    aml_isp_cm2_manual_attr cm2_manual[10];
+    aml_isp_cm2_manual_attr stMan[ISO_NUM_MAX];
 } aml_isp_cm2_auto_attr;
 
-typedef struct
-{
+typedef struct {
     aml_isp_op_type         op_type;
-    aml_isp_cm2_ctl_attr    cm2_ctl;
     aml_isp_cm2_manual_attr manual_attr;
     aml_isp_cm2_auto_attr   auto_attr;
 } aml_isp_cm2_attr;

@@ -181,20 +181,34 @@ void cmos_inttime_calc_table_imx415(int ViPipe, uint32_t pu32ExpL, uint32_t pu32
 void cmos_fps_set_imx415(int ViPipe, float f32Fps, ALG_SENSOR_DEFAULT_S *pstAeSnsDft)
 {
 
-    struct v4l2_ext_control fpsCtrl;
+    struct v4l2_ext_control sensorCtrl;
+    int clk_cnt;
+    memset(&sensorCtrl, 0, sizeof(struct v4l2_ext_control));
+    sensorCtrl.id = V4L2_CID_AML_ORIG_FPS;
+    sensorCtrl.value = (int32_t)(f32Fps / 256);
+    v4l2_subdev_set_ctrls(sensor.sensor_ent, &sensorCtrl, 1);
+    clk_cnt = sensor.snsAlgInfo.fps * sensor.snsAlgInfo.total.height;
+    sensor.snsAlgInfo.total.height = clk_cnt / f32Fps;
+    sensor.snsAlgInfo.lines_per_second =
+        sensor.snsAlgInfo.total.height * sensorCtrl.value;
+    sensor.snsAlgInfo.fps = f32Fps;
 
-    fpsCtrl.id = V4L2_CID_AML_ORIG_FPS;
-    fpsCtrl.value = (int32_t)(f32Fps / 256);
-    sensor.snsAlgInfo.total.height = ( 4503 * 30 )/fpsCtrl.value;
-    sensor.snsAlgInfo.fps = fpsCtrl.value*256;
-
-    sensor.snsAlgInfo.integration_time_max = (sensor.snsAlgInfo.total.height - 8 ) << SHUTTER_TIME_SHIFT;
-    sensor.snsAlgInfo.integration_time_long_max = (sensor.snsAlgInfo.total.height - 8 ) << SHUTTER_TIME_SHIFT;
-    sensor.snsAlgInfo.integration_time_limit = (sensor.snsAlgInfo.total.height - 8 ) << SHUTTER_TIME_SHIFT;
-    sensor.snsAlgInfo.lines_per_second = (sensor.snsAlgInfo.total.height - 8) * fpsCtrl.value;
+    memset(&sensorCtrl, 0, sizeof(struct v4l2_ext_control));
+    sensorCtrl.id = V4L2_CID_AML_VTS;
+    sensorCtrl.value = sensor.snsAlgInfo.total.height;
+    v4l2_subdev_set_ctrls(sensor.sensor_ent, &sensorCtrl, 1);
+    if (sensor.enWDRMode == 1) {
+        sensor.snsAlgInfo.integration_time_min = 9<<SHUTTER_TIME_SHIFT;
+        sensor.snsAlgInfo.integration_time_max = (273-9) << SHUTTER_TIME_SHIFT;
+        sensor.snsAlgInfo.integration_time_long_max = (sensor.snsAlgInfo.total.height*2 - (273+9)) << SHUTTER_TIME_SHIFT;
+        sensor.snsAlgInfo.integration_time_limit = (273-9) << SHUTTER_TIME_SHIFT;
+    } else {
+        sensor.snsAlgInfo.integration_time_min = 1 << SHUTTER_TIME_SHIFT;
+        sensor.snsAlgInfo.integration_time_max = (sensor.snsAlgInfo.total.height - 4) << SHUTTER_TIME_SHIFT;
+        sensor.snsAlgInfo.integration_time_long_max = (sensor.snsAlgInfo.total.height - 4) << SHUTTER_TIME_SHIFT;
+        sensor.snsAlgInfo.integration_time_limit = (sensor.snsAlgInfo.total.height - 4) << SHUTTER_TIME_SHIFT;
+    }
     memcpy(pstAeSnsDft, &sensor.snsAlgInfo, sizeof(ALG_SENSOR_DEFAULT_S));
-
-    v4l2_subdev_set_ctrls(sensor.sensor_ent, &fpsCtrl, 1);
 }
 
 void cmos_alg_update_imx415(int ViPipe)
