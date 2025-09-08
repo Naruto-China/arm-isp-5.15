@@ -573,9 +573,14 @@ static sensor_context_t *sensor_global_parameter(void* sbp)
 #if PLATFORM_C305X
     pwr_am_enable(sensor_bp, pwr_dts_pin_name, config_sensor_idx, 0);
 #endif
+    ret = reset_am_enable(sensor_bp, reset_dts_pin_name, config_sensor_idx, 0);
+    if (ret < 0 )
+       pr_err("set reset fail, line %d\n", __LINE__);
+
+    usleep_range(10000, 11000);
     ret = reset_am_enable(sensor_bp, reset_dts_pin_name, config_sensor_idx, 1);
     if (ret < 0 )
-       pr_info("set reset fail\n");
+        pr_err("set reset fail, line %d\n", __LINE__);
 #endif
 
     sensor_ctx.sbus.mask = SBUS_MASK_SAMPLE_8BITS | SBUS_MASK_ADDR_16BITS | SBUS_MASK_ADDR_SWAP_BYTES;
@@ -698,10 +703,14 @@ int sensor_detect_imx290sub( void* sbp)
 #if PLATFORM_C305X
     pwr_am_enable(sensor_bp, pwr_dts_pin_name, config_sensor_idx, 0);
 #endif
+    ret = reset_am_enable(sensor_bp, reset_dts_pin_name, config_sensor_idx, 0);
+    if (ret < 0 )
+       pr_err("set reset fail, line %d\n", __LINE__);
 
+    usleep_range(10000, 11000);
     ret = reset_am_enable(sensor_bp, reset_dts_pin_name, config_sensor_idx, 1);
     if (ret < 0 )
-       pr_info("set reset fail\n");
+        pr_err("set reset fail, line %d\n", __LINE__);
 #endif
 
     sensor_ctx.sbus.mask = SBUS_MASK_SAMPLE_8BITS | SBUS_MASK_ADDR_16BITS | SBUS_MASK_ADDR_SWAP_BYTES;
@@ -715,6 +724,10 @@ int sensor_detect_imx290sub( void* sbp)
         ret = -1;
     else
         pr_info("sensor_detect_imx290sub:%d\n", sensor_get_id(&sensor_ctx));
+
+    ret = reset_am_enable(sensor_bp, reset_dts_pin_name, config_sensor_idx, 0);
+    if (ret < 0 )
+       pr_err("set reset fail, line %d\n", __LINE__);
 
     acamera_sbus_deinit(&sensor_ctx.sbus,  sbus_i2c);
 

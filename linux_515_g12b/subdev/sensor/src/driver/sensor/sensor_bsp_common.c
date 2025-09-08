@@ -89,14 +89,20 @@ int pwr_ir_cut_enable(sensor_bringup_t* sensor_bp, int propname, int val)
 int reset_am_enable(sensor_bringup_t* sensor_bp, const char* propname, int idx, int val)
 {
     struct device_node *np = NULL;
+    char label[32];
     int ret = -1;
 
     np = sensor_bp->np;
+    if (sensor_bp->reset[idx] > 0
+        && gpio_is_valid(sensor_bp->reset[idx])) {
+        gpio_direction_output(sensor_bp->reset[idx], val);
+        return 0;
+    }
     sensor_bp->reset[idx] = of_get_named_gpio(np, propname, 0);
     ret = sensor_bp->reset[idx];
-
+    sprintf(label, "RESET_%d", idx);
     if (ret >= 0) {
-        devm_gpio_request(sensor_bp->dev, sensor_bp->reset[idx], "RESET");
+        devm_gpio_request(sensor_bp->dev, sensor_bp->reset[idx], label);
         if (gpio_is_valid(sensor_bp->reset[idx])) {
             gpio_direction_output(sensor_bp->reset[idx], val);
         } else {

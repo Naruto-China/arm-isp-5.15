@@ -57,6 +57,8 @@
 #include "system_log.h"
 
 #include <linux/ktime.h>
+#include <linux/hrtimer.h>
+#include <linux/completion.h>
 #include <uapi/linux/sched/types.h>
 
 #define AM_ADAPTER_NAME "amlogic, isp-adapter"
@@ -65,8 +67,11 @@
 #define CAMERA_NUM 2
 #define DDR_BUF_SIZE 6
 #define CAMERA_QUEUE_NUM 12
+#define FRAME_INTERVAL_MS 16
 
 struct am_adap *g_adap = NULL;
+static struct hrtimer read_frame_timer;
+static DECLARE_COMPLETION_ONSTACK(read_frame_done);
 
 struct am_adap_fsm_t
 {
@@ -97,6 +102,12 @@ static unsigned int frontend1_flag;
 struct am_adap_fsm_t adap_fsm[CAMERA_NUM];
 
 uint32_t camera_frame_fifo[CAMERA_QUEUE_NUM];
+
+static enum hrtimer_restart read_frame_timer_cb(struct hrtimer *timer)
+{
+	complete(&read_frame_done);
+	return HRTIMER_NORESTART;
+}
 
 static int ceil_upper(int val, int mod)
 {
@@ -1171,7 +1182,7 @@ static int adap_stream_copy_thread(void *data)
 		frame_num = kfifo_len(&adap_fsm[ADAP0_PATH].adapt_fifo) + kfifo_len(&adap_fsm[ADAP1_PATH].adapt_fifo);
 		if ( wait_event_interruptible_timeout( g_adap->frame_wq,
 			(g_adap->frame_state == FRAME_READY),
-				msecs_to_jiffies( 5 ) ) < 0 ) {
+				msecs_to_jiffies(5)) < 0 ) {
 			pr_info("Error: wait_event return < 0\n");
 			continue;
 		}
@@ -1185,11 +1196,12 @@ static int adap_stream_copy_thread(void *data)
 		for (i = 0; i < CAMS_MAX; i++)
 		{
 			frame_state = 0;
-			int64_t frameDuration = 33333333L / 2;
-			ktime_t kStartRealTime = ktime_get();
-			ktime_t kFrameEndRealTime = ktime_add_ns(kStartRealTime, frameDuration);
 			if ((kfifo_len(&adap_fsm[i].adapt_fifo) > 0) && camera_frame_fifo[g_adap->read_frame_ptr] == i)
 			{
+				if (wait_for_completion_timeout(&read_frame_done, msecs_to_jiffies(5000)) == 0) {
+					pr_err("timeout waiting for completion\n");
+					return 0;
+				}
 				frame_state = am_adap_isp_check_status_software(i);
 				if (i)
 				{
@@ -1209,11 +1221,8 @@ static int adap_stream_copy_thread(void *data)
 						mipi_adap_reg_wr(MIPI_ADAPT_ALIG_CNTL8, ALIGN_IO, 0x85231020 | 0x200 | (3 << 10));
 					adap_wr_reg_bits(MIPI_ADAPT_DDR_RD0_CNTL0, RD_IO, 1, 31, 1);
 				}
-				ktime_t kWorkDoneRealTime = ktime_get();
-				if (ktime_compare(kFrameEndRealTime, kWorkDoneRealTime) == 1) {
-					int64_t waitTime = ktime_to_us(ktime_sub(kFrameEndRealTime, kWorkDoneRealTime));
-					usleep_range(waitTime, waitTime);
-				}
+				reinit_completion(&read_frame_done);
+				hrtimer_start(&read_frame_timer, ktime_add_ms(ktime_get(), FRAME_INTERVAL_MS), HRTIMER_MODE_ABS);
 			}
 		}
 	}
@@ -1519,8 +1528,11 @@ int am_adap_init(uint8_t channel)
 		}
 
 		init_waitqueue_head(&g_adap->frame_wq);
+		hrtimer_init(&read_frame_timer, CLOCK_MONOTONIC, HRTIMER_MODE_ABS);
+		read_frame_timer.function = read_frame_timer_cb;
 		static struct sched_param param;
-		param.sched_priority = 2; // struct sched_param param = { .sched_priority = 2 };
+		param.sched_priority = 2;
+		complete(&read_frame_done);
 		g_adap->kadap_stream = kthread_run(adap_stream_copy_thread, NULL, "adap-stream");
 		sched_setscheduler(g_adap->kadap_stream, SCHED_IDLE, &param);
 		wake_up_process(g_adap->kadap_stream);
@@ -1633,7 +1645,6 @@ int am_adap_deinit(uint8_t channel)
 	if (adap_fsm[channel].para.mode == DDR_MODE)
 	{
 		am_disable_irq(channel);
-		// am_disable_irq(ADAP1_PATH);
 		am_adap_free_mem(channel);
 		if (g_adap->f_fifo && ((adap_fsm[ADAP0_PATH].cam_en + adap_fsm[ADAP1_PATH].cam_en) == CAM_DIS))
 		{
@@ -1668,7 +1679,7 @@ int am_adap_deinit(uint8_t channel)
 	adap_fsm[channel].control_flag = 0;
 	adap_fsm[channel].wbuf_index = 0;
 	adap_fsm[channel].next_buf_index = 0;
-
+	complete(&read_frame_done);
 	if (g_adap->kadap_stream != NULL && ((adap_fsm[ADAP0_PATH].cam_en + adap_fsm[ADAP1_PATH].cam_en) == CAM_DIS))
 	{
 		kthread_stop(g_adap->kadap_stream);
@@ -1677,7 +1688,7 @@ int am_adap_deinit(uint8_t channel)
 		g_adap->read_frame_ptr = 0;
 		g_adap->write_frame_ptr = 0;
 	}
-
+	hrtimer_cancel(&read_frame_timer);
 	return 0;
 }
 #endif
