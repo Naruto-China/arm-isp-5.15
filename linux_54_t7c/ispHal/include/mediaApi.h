@@ -30,6 +30,7 @@ extern "C" {
 typedef struct stream_configuration{
     struct aml_format format;
     struct aml_format vformat[4];
+    int fps;
 } stream_configuration_t;
 
 typedef struct media_stream {

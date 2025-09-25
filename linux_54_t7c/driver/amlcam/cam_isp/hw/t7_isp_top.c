@@ -322,7 +322,7 @@ void isp_top_init(struct isp_dev_t *isp_dev)
 
 	isp_reg_update_bits(isp_dev, ISP_FRM_CNT_CTRL, 1, 26, 1);
 
-	isp_reg_write(isp_dev, ISP_TOP_IRQ_EN, 0x1);
+	isp_reg_write(isp_dev, ISP_TOP_IRQ_EN, 0x201);
 
 	top_cfg_normal_path(isp_dev);
 }

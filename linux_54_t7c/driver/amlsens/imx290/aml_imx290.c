@@ -225,6 +225,7 @@ static int imx290_set_exposure(struct imx290 *imx290, u32 value)
 
 static int imx290_set_fps(struct imx290 *imx290, u32 value)
 {
+#if 0
 	u32 vts = 0;
 	u8 vts_h, vts_l;
 
@@ -236,7 +237,7 @@ static int imx290_set_fps(struct imx290 *imx290, u32 value)
 
 	imx290_write_reg(imx290, 0x3019, vts_h);
 	imx290_write_reg(imx290, 0x3018, vts_l);
-
+#endif
 	return 0;
 }
 

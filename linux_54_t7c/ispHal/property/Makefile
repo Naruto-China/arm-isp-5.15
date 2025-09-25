@@ -9,10 +9,11 @@ ISP_ROOT_DIR := $(LOCAL_PATH)/..
 ISP_ROOT_OUT_DIR := $(OUT_DIR)/..
 LOCAL_INCLUDES := -I$(ISP_ROOT_DIR)/include/
 
-TARGET := media2videoService
+TARGET := property
 
 #CFLAGS := -Wall -Werror -Wno-int-to-pointer-cast -Wno-pointer-to-int-cast
-CFLAGS := -Wall -Wno-int-to-pointer-cast -Wno-pointer-to-int-cast
+CFLAGS := -g -O0 -Wall -Wextra
+CFLAGS += -Wall -Wno-int-to-pointer-cast -Wno-pointer-to-int-cast
 CFLAGS += -pthread -fPIE
 CFLAGS += $(LOCAL_INCLUDES)
 LDFLAGS = -ldl -L$(OUT_DIR)/../media-v4l2 -lmediaAPI \

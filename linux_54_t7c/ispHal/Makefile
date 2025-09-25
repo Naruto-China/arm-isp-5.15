@@ -4,16 +4,19 @@ define module_clean
     make -C $(LOCAL_PATH)/$(1) clean
 endef
 
-.PHONY: clean media-v4l2_clean sensor_calibration_clean v4l2_test_media_clean media2videoService_clean lens_clean
+.PHONY: clean media-v4l2_clean sensor_calibration_clean v4l2_test_media_clean ispService_clean lens_clean propertyService_clean
 
 clean:
 	$(call module_clean,media-v4l2)
 	$(call module_clean,sensor_calibration)
 	$(call module_clean,v4l2_test_media)
-	$(call module_clean,media2videoService)
+	$(call module_clean,ispService)
 	$(call module_clean,lens)
+	$(call module_clean,propertyService)
 	@rm -rf $(LOCAL_PATH)/v4l2_test_media/v4l2_test_raw.o
-	@rm -rf $(LOCAL_PATH)/media2videoService/media2videoService.o
+	@rm -rf $(LOCAL_PATH)/ispService/ispMgr.o
+	@rm -rf $(LOCAL_PATH)/ispService/ispService.o
+	@rm -rf $(LOCAL_PATH)/propertyService/propertyService.o
 
 media-v4l2_clean:
 	$(call module_clean,media-v4l2)
@@ -24,8 +27,12 @@ sensor_calibration_clean:
 v4l2_test_media_clean:
 	$(call module_clean,v4l2_test_media)
 	@rm -rf $(LOCAL_PATH)/v4l2_test_media/v4l2_test_raw.o
-media2videoService_clean:
-	$(call module_clean,media2videoService)
-	@rm -rf $(LOCAL_PATH)/media2videoService/media2videoService.o
+ispService_clean:
+	$(call module_clean,ispService)
+	@rm -rf $(LOCAL_PATH)/ispService/ispMgr.o
+	@rm -rf $(LOCAL_PATH)/ispService/ispService.o
 lens_clean:
 	$(call module_clean,lens)
+propertyService_clean:
+	$(call module_clean,propertyService)
+	@rm -rf $(LOCAL_PATH)/propertyService/propertyService.o

@@ -147,6 +147,7 @@ int mediaStreamInit(media_stream_t *stream, struct media_device * dev)
         ERR("get video_param fail");
     }
 
+#if 0
     int ret = v4l2_video_open(stream->video_ent0);
     INFO("%s open video0 fd %d ", __FUNCTION__, stream->video_ent0->fd);
 
@@ -162,10 +163,10 @@ int mediaStreamInit(media_stream_t *stream, struct media_device * dev)
         ret = v4l2_video_open(stream->video_ent3);
         INFO("%s open video3 fd %d ", __FUNCTION__, stream->video_ent3->fd);
     }
-
+#endif
     if (stream->lens_ent) {
-        ret = v4l2_video_open(stream->lens_ent);
-        ERR("%s open lens fd %d ", __FUNCTION__, stream->lens_ent->fd);
+        int ret = v4l2_video_open(stream->lens_ent);
+        ERR("%s open lens fd %d ret %d", __FUNCTION__, stream->lens_ent->fd, ret);
     }
 
 
@@ -262,6 +263,13 @@ int setSdFormat(media_stream_t *stream, stream_configuration_t *cfg)
     enum v4l2_subdev_format_whence which = V4L2_SUBDEV_FORMAT_ACTIVE;
 
     INFO("%s ++", __FUNCTION__);
+
+    if (cfg->fps > 0) {
+        rtn = v4l2_subdev_set_fps(stream->sensor_ent, cfg->fps);
+        if (rtn < 0) {
+            INFO("Failed to set sensor fps, use default\n");
+        }
+    }
 
     // sensor source pad fmt
     rtn = v4l2_subdev_set_format(stream->sensor_ent,

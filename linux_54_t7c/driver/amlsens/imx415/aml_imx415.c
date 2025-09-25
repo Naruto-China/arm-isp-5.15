@@ -68,6 +68,18 @@ static const struct imx415_mode imx415_modes_4lanes[] = {
 		.data = linear_4k_60fps_1440Mbps_4lane_10bits,
 		.data_size = ARRAY_SIZE(linear_4k_60fps_1440Mbps_4lane_10bits),
 	},
+	{
+		.width = 1920,
+		.height = 1080,
+		.hmax = 0x0898,
+		.link_freq_index = FREQ_INDEX_1080P,
+		.max_fps = {
+			.numerator = 10000,
+			.denominator = 300000,
+		},
+		.data = linear_1080P_30fps_1440Mbps_4lane_10bits,
+		.data_size = ARRAY_SIZE(linear_1080P_30fps_1440Mbps_4lane_10bits),
+	},
 };
 
 static inline const struct imx415_mode *imx415_modes_ptr(const struct imx415 *imx415)
@@ -182,6 +194,7 @@ static int imx415_set_exposure(struct imx415 *imx415, u32 value)
 
 static int imx415_set_vts(struct imx415 *imx415, u32 value)
 {
+#if 0
 	u32 vts = 0;
 	u8 vts_h, vts_l;
 	int ret = 0;
@@ -191,13 +204,13 @@ static int imx415_set_vts(struct imx415 *imx415, u32 value)
 	vts_h = (vts >> 8) & 0xff;
 	vts_l = vts & 0xff;
 
-	ret = imx415_write_reg(imx415, 0x3025, vts_h);
+	ret = imx415_write_reg(imx415, 0x3025, vts_h);//0x09
 	if (ret) {
 		dev_err(imx415->dev, "Error setting vts register, line %d\n", __LINE__);
 		goto ERR;
 	}
 
-	ret = imx415_write_reg(imx415, 0x3024, vts_l);
+	ret = imx415_write_reg(imx415, 0x3024, vts_l);//0x18
 	if (ret) {
 		dev_err(imx415->dev, "Error setting vts register, line %d\n", __LINE__);
 		goto ERR;
@@ -205,10 +218,14 @@ static int imx415_set_vts(struct imx415 *imx415, u32 value)
 
 ERR:
 	return ret;
+#endif
+	return 0;
 }
 
 static int imx415_set_fps(struct imx415 *imx415, u32 value)
 {
+#if 0
+
 	u32 vts = 0;
 	u8 vts_h, vts_l;
 
@@ -220,7 +237,7 @@ static int imx415_set_fps(struct imx415 *imx415, u32 value)
 
 	imx415_write_reg(imx415, 0x3025, vts_h);
 	imx415_write_reg(imx415, 0x3024, vts_l);
-
+#endif
 	return 0;
 }
 
@@ -478,8 +495,8 @@ static int imx415_set_fmt(struct v4l2_subdev *sd,
 			ret = imx415_set_register_array(imx415, linear_4k_60fps_1440Mbps_4lane_10bits,
 				ARRAY_SIZE(linear_4k_60fps_1440Mbps_4lane_10bits));
 		} else {
-			ret = imx415_set_register_array(imx415, linear_4k_30fps_1440Mbps_4lane_10bits,
-				ARRAY_SIZE(linear_4k_30fps_1440Mbps_4lane_10bits));
+			dev_err(imx415->dev, "imx415 wdr mode init... %d ", imx415->current_mode->data_size);
+			ret = imx415_set_register_array(imx415, imx415->current_mode->data, imx415->current_mode->data_size);
 		}
 		if (ret < 0) {
 			dev_err(imx415->dev, "Could not set init registers\n");
@@ -745,7 +762,7 @@ static struct v4l2_ctrl_config vts_cfg = {
 	.min = 1,
 	.max = 0xffff,
 	.step = 1,
-	.def = 2256, //sensor vmax register[0x3025-0x3024]
+	.def = 2328, //sensor vmax register[0x3025-0x3024]
 };
 
 static int imx415_ctrls_init(struct imx415 *imx415)

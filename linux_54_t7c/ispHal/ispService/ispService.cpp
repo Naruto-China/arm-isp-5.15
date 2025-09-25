@@ -26,6 +26,8 @@
 #include <sys/types.h>
 #include <signal.h>
 #include <semaphore.h>
+#include <stdbool.h>
+
 
 #include "logs.h"
 
@@ -39,10 +41,17 @@
 
 
 //#define WDR_ENABLE
-//#define DUAL_CAMERA
+#define DUAL_CAMERA
 
 #define NB_BUFFER                4
 #define NB_BUFFER_PARAM          1
+
+static volatile bool running = true;
+void sig_handler(int sig) {
+    if (sig == SIGTERM || sig == SIGINT) {
+        running = false;
+    }
+}
 
 struct ispIF ispIf;
 
@@ -69,6 +78,9 @@ struct config_param {
     uint32_t                    height;
 
     isp_info                    info;
+    IspMgr*                     ispmgr;
+    int                         media_fd;
+    int                         fps;
 };
 
 static int getInterface() {
@@ -326,12 +338,16 @@ int prepare_media_stream(struct config_param  *tparm)
         ERR("The %s device init fail.\n", tparm->mediadevname);
         return -1;
     }
+    tparm->media_fd = tparm->v4l2_media_stream.media_dev->fd;
     INFO("The %s device was opened successfully. stream init ok\n", tparm->mediadevname);
 
     media_set_wdrMode(&tparm->v4l2_media_stream, 0);
     media_set_wdrMode(&tparm->v4l2_media_stream, tparm->wdr_mode);
 
-    fetchPipeMaxResolution(&tparm->v4l2_media_stream, &tparm->width, &tparm->height);
+    if (tparm->width <= 0 || tparm->height <= 0)
+        fetchPipeMaxResolution(&tparm->v4l2_media_stream, &tparm->width, &tparm->height);
+
+    ERR("media_stream_config %d %d", tparm->width, tparm->height);
 
     /* config & set format */
     stream_configuration     stream_config ;
@@ -340,25 +356,24 @@ int prepare_media_stream(struct config_param  *tparm)
     stream_config.format.height = tparm->height;
     stream_config.format.code   = tparm->fmt_code;
     stream_config.format.nplanes   = 1;
+    stream_config.fps    = tparm->fps;
 
     rc = media_stream_config(&tparm->v4l2_media_stream, &stream_config);
     if (rc < 0) {
         ERR("fail config stream\n");
         return -1;
     }
-    rc = isp_param_init(tparm->v4l2_media_stream, tparm);
-    if (rc < 0) {
-        ERR("fail init isp param\n");
-        return -1;
-    }
-
+    ERR("fail config stream\n");
+    rc = tparm->ispmgr->configure(
+        &tparm->v4l2_media_stream, 0, nullptr, 30);
+    rc = tparm->ispmgr->start();
     return 0;
 }
 
 void usage(char * prog){
     INFO("%s\n", prog);
     INFO("usage:\n");
-    INFO(" example   : ./media2videoService -m /dev/media0 \n");
+    INFO(" example   : ./ispService -m /dev/media0 \n");
     INFO("    m : media dev name: /dev/media0 or /dev/media1 \n");
 }
 
@@ -369,6 +384,13 @@ int main(int argc, char *argv[])
 
     int name_bytes = 0;
     struct media_stream         v4l2_media_stream;
+    int fps = 30;
+    int sensor_W = 0;
+    int sensor_H = 0;
+    bool off_line = false;
+
+    signal(SIGTERM, sig_handler);
+    signal(SIGINT, sig_handler);
 
     if (argc < 1) {
         usage(argv[0]);
@@ -378,10 +400,22 @@ int main(int argc, char *argv[])
     int c;
 
     while (optind < argc) {
-        if ((c = getopt (argc, argv, "m:")) != -1) {
+        if ((c = getopt (argc, argv, "m:f:W:H:M:")) != -1) {
             switch (c) {
             case 'm':
                 strcpy(v4l2mediadevname, optarg);
+                break;
+            case 'f':
+                fps = atoi(optarg);
+                break;
+            case 'W':
+                sensor_W = atoi(optarg);
+                break;
+            case 'H':
+                sensor_H = atoi(optarg);
+                break;
+            case 'M':
+                off_line = (atoi(optarg) > 0) ;
                 break;
             case '?':
                 usage(argv[0]);
@@ -394,12 +428,14 @@ int main(int argc, char *argv[])
         }
     }
 
+    IspMgr* ispmgr = new IspMgr(0);
+
     struct config_param tparam_raw = {
         .mediadevname = v4l2mediadevname,
 
 #if defined (DUAL_CAMERA)
         .fmt_code   = MEDIA_BUS_FMT_SRGGB12_1X12,
-        .wdr_mode   = ISP_SDR_DCAM_MODE,
+        .wdr_mode   = (off_line ? ISP_SDR_DCAM_MODE : WDR_MODE_NONE),
 #elif defined (WDR_ENABLE)
         .fmt_code   = MEDIA_BUS_FMT_SBGGR10_1X10,//MEDIA_BUS_FMT_SRGGB12_1X12,//
         .wdr_mode   = WDR_MODE_2To1_LINE,//WDR_MODE_2To1_LINE,
@@ -407,19 +443,33 @@ int main(int argc, char *argv[])
         .fmt_code   = MEDIA_BUS_FMT_SRGGB12_1X12,//
         .wdr_mode   = WDR_MODE_NONE,
 #endif
+        .ispmgr     = ispmgr,
+        .fps        = fps,
     };
-
+    if (sensor_W > 0 && sensor_H > 0) {
+        tparam_raw.width = sensor_W;
+        tparam_raw.height = sensor_H;
+    }
+    MSG("user set sensor w %d, h %d", tparam_raw.width, tparam_raw.height);
     rtn = prepare_media_stream(&tparam_raw);
     if (0 != rtn ) {
         ERR("prepare pipeline fail\n");
         return -1;
     }
 
-    while (1) {
-    MSG("%s is  running, sleep......\n", argv[0]);
-    MSG("the service used to provider video 63 node to dequeue buffer\n");
-    sleep(5);
+    while (running) {
+        pause();
     }
+
+    if (ispmgr) {
+        ispmgr->stop();
+        delete ispmgr;
+    }
+
+    if ( tparam_raw.v4l2_media_stream.media_dev ) {
+        media_device_unref( tparam_raw.v4l2_media_stream.media_dev );
+    }
+    if (tparam_raw.media_fd > 0) close(tparam_raw.media_fd);
 
     return 0;
 }
