@@ -592,6 +592,9 @@ static int adap_frontend_init(void *a_dev)
 	//				reg_vfifo_vs_out_pre << 12 |
 	//				reg_lbuf0_vs_sel << 8);
 
+	if (param->mode == MODE_MIPI_RAW_SDR_DIRCT)
+		module_update_bits(a_dev, ALIGN_MD, MIPI_ADAPT_AXI_CTRL0, 0x9, 0, 4);
+
 	return rtn;
 }
 
