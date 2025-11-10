@@ -403,6 +403,55 @@ int IspMgr::set_exposure_time(int shuttime_value) {
   return 0;
 }
 
+int IspMgr::set_awb(int awb) {
+  aisp_api_type_t param;
+  isp_wb_attr_s data;
+  aisp_api_type_t *api_type = &param;
+  isp_wb_attr_s *attr = &data;
+  api_type->u8Direction = AML_CMD_GET;
+  api_type->u8CmdType = 0; // not used
+  api_type->u8CmdId = AML_MBI_ISP_WBAttr;
+  api_type->u32Value = 0; // not used
+  api_type->pData = (uint32_t *)&data;
+  (IspMgr::mIspIF.algFwInterface)(mId, api_type);
+
+  if (awb < 0)
+    attr->bByPass = mbp_false;
+  else {
+      attr->bByPass = mbp_true;
+      attr->stAuto.enManMode = ISP_AWB_MODE_COLOR_TEM;
+      attr->stManual.u32ManualTemperature = awb;
+  }
+  api_type->u8Direction = AML_CMD_SET;
+  (IspMgr::mIspIF.algFwInterface)(mId, api_type);
+  return 0;
+}
+
+int IspMgr::set_csc(int brightness, int contrast) {
+  aisp_api_type_t param;
+  aml_isp_csc_attr data;
+  aisp_api_type_t *api_type = &param;
+  aml_isp_csc_attr *attr = &data;
+  api_type->u8Direction = AML_CMD_GET;
+  api_type->u8CmdType = 0; // not used
+  api_type->u8CmdId = AML_MBI_ISP_CSCAttr;
+  api_type->u32Value = 0; // not used
+  api_type->pData = (uint32_t *)&data;
+  (IspMgr::mIspIF.algFwInterface)(mId, api_type);
+
+  if (brightness > 0 || contrast > 0) {
+      attr->csc_enable = 1;
+      if (brightness > 0)
+        attr->glb_brightness = brightness;
+      if (contrast > 0)
+        attr->glb_contrast  = contrast;
+  }
+  api_type->u8Direction = AML_CMD_SET;
+  (IspMgr::mIspIF.algFwInterface)(mId, api_type);
+  return 0;
+}
+
+
 #if 0
 int IspMgr::getAWBInfo(void* data)
 {
@@ -596,17 +645,36 @@ bool IspMgr::threadLoop(void * _ispmgr) {
             ERR ("[params] error: queue buffer");
             break;
         }
+        
+        char value[1024*3];
+        int br, constrast;
+        int user_set_value;
+
         if (!(ispmgr->mWdrEnable)) {
-            char value[1024*3];
             memset(value, 0 ,sizeof(value));
             property_get_str(USER_SET_EXP_TIME, value, "999999999");
-            int user_set_value = atoi(value);
-            if (user_set_value > 544 && user_set_value < 16000) {
-                ispmgr->set_exposure_time(user_set_value);
-            } else {
+            user_set_value = atoi(value);
+            if (user_set_value <= 0 || user_set_value >= 999999999) {
                 ispmgr->set_exposure_time(33000);
+            } else {
+                ispmgr->set_exposure_time(user_set_value);
             }
         }
+        memset(value, 0 ,sizeof(value));
+        property_get_str(USER_SET_AWB, value, "999999999");
+        user_set_value = atoi(value);
+        if (user_set_value <= 0 || user_set_value >= 999999999) {
+            ispmgr->set_awb(-1);
+        } else {
+            ispmgr->set_awb(user_set_value);
+        }
+        memset(value, 0 ,sizeof(value));
+        property_get_str(USER_SET_BRIGHTNESS, value, "-1");
+        br = user_set_value = atoi(value);
+        memset(value, 0 ,sizeof(value));
+        property_get_str(USER_SET_CONTRAST, value, "-1");
+        constrast = user_set_value = atoi(value);
+        ispmgr->set_csc(br, constrast);
         break;
     } while(1);
     //ERR("threadLoop-");

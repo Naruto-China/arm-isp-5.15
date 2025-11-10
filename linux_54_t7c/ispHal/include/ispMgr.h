@@ -81,6 +81,8 @@ class IspMgr {
     //int getAWBInfo(void* data);
     //int getAEInfo(void* data);
     int setMaxfps(int fps);
+    int set_awb(int awb);
+    int set_csc(int brightness, int contrast);
   public:
     static struct ispIF  mIspIF;
   protected:

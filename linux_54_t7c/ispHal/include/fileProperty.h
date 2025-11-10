@@ -26,6 +26,9 @@
 #define PROPERTY_VALUE_MAX  (3*1024)
 #define PROPERTY_FILE_NAME  "/tmp/ispservice_config.txt"
 #define USER_SET_EXP_TIME         "camera.exp.time"
+#define USER_SET_AWB         "camera.awb"
+#define USER_SET_BRIGHTNESS         "camera.brightness"
+#define USER_SET_CONTRAST         "camera.contrast"
 #ifdef __cplusplus
 extern "C" {
 #endif

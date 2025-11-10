@@ -45,6 +45,9 @@ void usage(char * prog){
 }
 const char* keyMap[] = {
     USER_SET_EXP_TIME,
+    USER_SET_AWB,
+    USER_SET_BRIGHTNESS,
+    USER_SET_CONTRAST,
 };
 int main(int argc, char *argv[])
 {
@@ -60,13 +63,25 @@ int main(int argc, char *argv[])
     int c;
 
     while (optind < argc) {
-        if ((c = getopt (argc, argv, "t:e:")) != -1) {
+        if ((c = getopt (argc, argv, "t:e:w:b:c:")) != -1) {
             switch (c) {
             case 't':
                 ops_type = atoi(optarg);
                 break;
             case 'e':
                 keyMap_idx = 0;
+                usr_value = atoi(optarg);
+                break;
+            case 'w':
+                keyMap_idx = 1;
+                usr_value = atoi(optarg);
+                break;
+            case 'b':
+                keyMap_idx = 2;
+                usr_value = atoi(optarg);
+                break;
+            case 'c':
+                keyMap_idx = 3;
                 usr_value = atoi(optarg);
                 break;
             case '?':
@@ -85,7 +100,7 @@ int main(int argc, char *argv[])
         property_set(keyMap[keyMap_idx], value);
     } else {
         property_get_str(keyMap[keyMap_idx], value, "-1");
-        MSG("get exp time %s\n", value);
+        MSG("get %s %s\n", keyMap[keyMap_idx], value);
     }
     return 0;
 }
