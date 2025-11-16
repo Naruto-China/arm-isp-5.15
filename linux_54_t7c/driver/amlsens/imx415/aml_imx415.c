@@ -82,14 +82,35 @@ static const struct imx415_mode imx415_modes_4lanes[] = {
 	},
 };
 
+static const struct imx415_mode imx415_modes_2lanes[] = {
+	{
+		.width = 3840,
+		.height = 2160,
+		.hmax = 0x0898,
+		.link_freq_index = FREQ_INDEX_1080P,
+		.max_fps = {
+			.numerator = 10000,
+			.denominator = 300000,
+		},
+		.data = linear_4k_30fps_1440Mbps_2lane_10bits,
+		.data_size = ARRAY_SIZE(linear_4k_30fps_1440Mbps_2lane_10bits),
+	},
+};
+
 static inline const struct imx415_mode *imx415_modes_ptr(const struct imx415 *imx415)
 {
-	return imx415_modes_4lanes;
+	if (imx415->nlanes == 2)
+		return imx415_modes_2lanes;
+	else
+		return imx415_modes_4lanes;
 }
 
 static inline int imx415_modes_num(const struct imx415 *imx415)
 {
-	return ARRAY_SIZE(imx415_modes_4lanes);
+	if (imx415->nlanes == 2)
+		return ARRAY_SIZE(imx415_modes_2lanes);
+	else
+		return ARRAY_SIZE(imx415_modes_4lanes);
 }
 
 static inline struct imx415 *to_imx415(struct v4l2_subdev *_sd)
@@ -858,6 +879,7 @@ int imx415_init(struct i2c_client *client, void *sdrv)
 	imx415->client->addr = IMX415_SLAVE_ID;
 	imx415->gpio = &sensor->gpio;
 	imx415->fps = 30;
+	imx415->nlanes = 4;
 
 	imx415->regmap = devm_regmap_init_i2c(client, &imx415_regmap_config);
 	if (IS_ERR(imx415->regmap)) {
