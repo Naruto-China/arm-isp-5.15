@@ -5,7 +5,8 @@ M_PATH := $(shell dirname $(lastword $(MAKEFILE_LIST)))
 
 ifeq ($(DRV_SRC_OBJ),)
 	DRV_SRC := $(wildcard *.c imx290/*.c imx335/*.c imx378/*.c imx415/*.c ov08a10/*.c ov5640/*.c \
-				ov13b10/*.c imx577/*.c ov16a1q/*c ov13855/*.c lt6911c/*.c imx585/*.c imx678/*.c)
+				ov13b10/*.c imx577/*.c ov16a1q/*c ov13855/*.c lt6911c/*.c \
+				imx678/*.c imx585/*.c)
 	export DRV_SRC_OBJ := $(DRV_SRC:.c=.o)
 endif
 

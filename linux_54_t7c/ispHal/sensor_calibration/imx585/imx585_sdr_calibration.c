@@ -9,8 +9,6 @@
 
 #include "aml_isp_tuning.h"
 
-
-//calibration_version
 static int32_t _CALIBRATION_VERSION[1] = {20250822};
 
 //aisp_top_ctl_t
@@ -178,9 +176,9 @@ static int32_t _CALIBRATION_HIGHLIGHT_DETECT[27] = {
     128,                /**< u8, manual highlight strength,range(0,255),recommend is (0,230), default is 128  */
     // highlight auto
     0,                  /**< u1, auto highlight car enable, if enable, when detected car light scene, will do highlight suppressive */
-    128,                /**< u8, auto highlight car strength, range(0,255),recommend is (0,230), default is 128  */
+    128,                /**< u8, auto highlight car strength, range(0,255),recommend is (0,230), default is 128  **/
     0,                  /**< u1, auto highlight window enable, if enable, when detected window scene, will do highlight suppressive */
-    128,                /**< u8, auto highlight window strength, range(0,255),recommend is (0,128), default is 128 */
+    128,                /**< u8, auto highlight window strength, range(0,255),recommend is (0,128), default is 128 **/
     //backlight compensation
     0,                  /**< u1,backligh compensation enable, 0:disable;1:enable */
     128,                /**< u8, backlight compensation strength,range(0,255),recommend is (0,230), default is 128  */
@@ -1917,5 +1915,4 @@ int dynamic_sdr_calibrations_init_imx585(aisp_calib_info_t *calib)
 
     return 0;
 }
-
 
