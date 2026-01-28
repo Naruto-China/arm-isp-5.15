@@ -39,10 +39,6 @@
 #include "staticPipe.h"
 #include "ispMgr.h"
 
-
-//#define WDR_ENABLE
-#define DUAL_CAMERA
-
 #define NB_BUFFER                4
 #define NB_BUFFER_PARAM          1
 
@@ -125,187 +121,6 @@ static int getInterface() {
     return 0;
 }
 
-int isp_param_init(struct media_stream v4l2_media_stream, struct config_param *tparm)
-{
-    struct v4l2_requestbuffers  v4l2_rb;
-    int rc, i;
-    int total_mapped_mem=0;
-    struct v4l2_buffer v4l2_buf;
-    char alg_init[256*1024];
-
-    stream_configuration_t     stream_config;
-    stream_config.format.width = 1024;
-    stream_config.format.height = 256;
-    stream_config.format.nplanes   = 1;
-
-    rc = setDataFormat(&v4l2_media_stream, &stream_config);
-    if (rc < 0) {
-        ERR("Failed to set stats format");
-        return -1;
-    }
-
-    rc = setConfigFormat(&v4l2_media_stream, &stream_config);
-    if (rc < 0) {
-        ERR("Failed to set param format");
-        return -1;
-    }
-
-    /* request buffers */
-    memset (&v4l2_rb, 0, sizeof (struct v4l2_requestbuffers));
-    v4l2_rb.count  = NB_BUFFER;
-    v4l2_rb.type   = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    v4l2_rb.memory = V4L2_MEMORY_MMAP;
-    rc = v4l2_video_req_bufs(tparm->v4l2_media_stream.video_stats, &v4l2_rb);
-    if (rc < 0) {
-        ERR("Error: request buffer.\n");
-        return -1;
-    }
-
-    memset (&v4l2_rb, 0, sizeof (struct v4l2_requestbuffers));
-    v4l2_rb.count  = NB_BUFFER_PARAM;
-    v4l2_rb.type   = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    v4l2_rb.memory = V4L2_MEMORY_MMAP;
-    rc = v4l2_video_req_bufs(v4l2_media_stream.video_param, &v4l2_rb);
-    if (rc < 0) {
-        ERR("Failed to req_bufs");
-        return -1;
-    }
-
-    /* map stats buffers */
-    for (i = 0; i < NB_BUFFER; i++) {
-        memset (&v4l2_buf, 0, sizeof (struct v4l2_buffer));
-        v4l2_buf.index   = i;
-        v4l2_buf.type    = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-        v4l2_buf.memory  = V4L2_MEMORY_MMAP;
-        rc = v4l2_video_query_buf(tparm->v4l2_media_stream.video_stats, &v4l2_buf);
-        if (rc < 0) {
-            ERR("Error: query buffer %d.\n", rc);
-            return -1;
-        }
-
-        if (v4l2_buf.type == V4L2_BUF_TYPE_VIDEO_CAPTURE) {
-            tparm->stats_buf_length = v4l2_buf.length;
-            INFO("video capture. length: %u offset: %u\n", v4l2_buf.length, v4l2_buf.m.offset);
-            tparm->v4l2_mem[i] = mmap (0, v4l2_buf.length, PROT_READ | PROT_WRITE, MAP_SHARED,
-                tparm->v4l2_media_stream.video_stats->fd, v4l2_buf.m.offset);
-            ++total_mapped_mem;
-            INFO("Buffer[%d] mapped at address 0x%p total_mapped_mem:%d.\n", i, tparm->v4l2_mem[i], total_mapped_mem);
-        }
-        if (tparm->v4l2_mem[i] == MAP_FAILED) {
-            ERR("Error: mmap buffers.\n");
-            return -1;
-        }
-    }
-
-    /* map buffers */
-    for (i = 0; i < NB_BUFFER_PARAM; i++) {
-        memset (&v4l2_buf, 0, sizeof (struct v4l2_buffer));
-        v4l2_buf.index   = i;
-        v4l2_buf.type    = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-        v4l2_buf.memory  = V4L2_MEMORY_MMAP;
-        rc = v4l2_video_query_buf(v4l2_media_stream.video_param, &v4l2_buf);
-        if (rc < 0) {
-            ERR("Failed to query bufs");
-            return -1;
-        }
-
-        if (v4l2_buf.type == V4L2_BUF_TYPE_VIDEO_CAPTURE) {
-            tparm->param_buf_length = v4l2_buf.length;
-            INFO("[T#2] type video capture. length: %u offset: %u\n", v4l2_buf.length, v4l2_buf.m.offset);
-            tparm->v4l2_mem_param[i] = mmap (0, v4l2_buf.length, PROT_READ | PROT_WRITE, MAP_SHARED,
-                v4l2_media_stream.video_param->fd, v4l2_buf.m.offset);
-            INFO("[T#2] Buffer[0] mapped at address 0x%p total_mapped_mem:%d.\n", tparm->v4l2_mem_param[i], total_mapped_mem);
-        }
-        if (tparm->v4l2_mem_param[i] == MAP_FAILED) {
-            ERR("[T#2] Error: mmap buffers.\n");
-            return -1;
-        }
-    }
-
-    static int ret = getInterface();
-    if (ret == -1) {
-        ERR("Failed to getInterface");
-        return -1;
-    }
-
-    tparm->sensorCfg = matchSensorConfigByStream(&v4l2_media_stream);
-    if (tparm->sensorCfg == nullptr) {
-        ERR("Failed to matchSensorConfig");
-        return -1;
-    }
-
-#ifdef WDR_ENABLE
-    cmos_set_sensor_entity(tparm->sensorCfg, v4l2_media_stream.sensor_ent, 1);
-#else
-    cmos_set_sensor_entity(tparm->sensorCfg, v4l2_media_stream.sensor_ent, 0);
-#endif
-    cmos_sensor_control_cb(tparm->sensorCfg, &tparm->info.pstAlgCtx.stSnsExp);
-    cmos_get_sensor_calibration(tparm->sensorCfg, v4l2_media_stream.sensor_ent, &tparm->info.calib);
-
-    (ispIf.algEnable)(0, &tparm->info.pstAlgCtx, &tparm->info.calib);
-    memset(alg_init, 0, sizeof(alg_init));
-
-    (ispIf.alg2User)(0, alg_init);
-    (ispIf.alg2Kernel)(0, tparm->v4l2_mem_param[0]);
-
-    /* queue buffers */
-    DBG("[T#0] begin to Queue buf.\n");
-    for (i = 0; i < NB_BUFFER; ++i) {
-        memset (&v4l2_buf, 0, sizeof (struct v4l2_buffer));
-        v4l2_buf.index   = i;
-        v4l2_buf.type    = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-        v4l2_buf.memory  = V4L2_MEMORY_MMAP;
-        rc = v4l2_video_q_buf( tparm->v4l2_media_stream.video_stats, &v4l2_buf );
-        if (rc < 0) {
-            ERR("Error: queue buffers, rc:%d i:%d\n",rc, i);
-            return -1;
-        }
-    }
-
-    for (i = 0; i < NB_BUFFER_PARAM; ++i) {
-        memset (&v4l2_buf, 0, sizeof (struct v4l2_buffer));
-        v4l2_buf.index   = i;
-        v4l2_buf.type    = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-        v4l2_buf.memory  = V4L2_MEMORY_MMAP;
-        rc = v4l2_video_q_buf( v4l2_media_stream.video_param, &v4l2_buf );
-        if (rc < 0) {
-            ERR("Error: queue buffers, rc:%d i:%d\n", rc, i);
-            return -1;
-        }
-    }
-
-    rc = v4l2_video_stream_on(tparm->v4l2_media_stream.video_stats, V4L2_BUF_TYPE_VIDEO_CAPTURE);
-    if (rc < 0) {
-        ERR("[T#0] Error: stats streamon.\n");
-        return -1;
-    }
-
-    rc = v4l2_video_stream_on(v4l2_media_stream.video_param, V4L2_BUF_TYPE_VIDEO_CAPTURE);
-    if (rc < 0) {
-        ERR("[T#0] Error: param streamon.\n");
-        return -1;
-    }
-
-    /* stream off */
-    rc = v4l2_video_stream_off(tparm->v4l2_media_stream.video_stats, V4L2_BUF_TYPE_VIDEO_CAPTURE);
-
-    /* unmap buffers */
-    for (i = 0; i < NB_BUFFER; i++) {
-        munmap (tparm->v4l2_mem[i], tparm->stats_buf_length);
-    }
-
-    /* stream off */
-    rc = v4l2_video_stream_off(tparm->v4l2_media_stream.video_param, V4L2_BUF_TYPE_VIDEO_CAPTURE);
-
-    /* unmap buffers */
-    for (i = 0; i < NB_BUFFER_PARAM; i++) {
-        munmap (tparm->v4l2_mem_param[i], tparm->param_buf_length);
-    }
-
-    DBG("[T#0] Finished alg_param_init.\n");
-    return 0;
-}
-
 int media_stream_config(media_stream_t * stream, stream_configuration_t *cfg)
 {
     int rtn = -1;
@@ -365,7 +180,7 @@ int prepare_media_stream(struct config_param  *tparm)
     }
     ERR("fail config stream\n");
     rc = tparm->ispmgr->configure(
-        &tparm->v4l2_media_stream, 0, nullptr, 30);
+        &tparm->v4l2_media_stream, tparm->wdr_mode, nullptr, 30);
     rc = tparm->ispmgr->start();
     return 0;
 }
@@ -387,7 +202,9 @@ int main(int argc, char *argv[])
     int fps = 30;
     int sensor_W = 0;
     int sensor_H = 0;
-    bool off_line = false;
+    int wdr_mode = 0;
+    uint32_t _fmt_code = 0;
+    uint32_t _wdr_mode = 0;
 
     signal(SIGTERM, sig_handler);
     signal(SIGINT, sig_handler);
@@ -415,7 +232,7 @@ int main(int argc, char *argv[])
                 sensor_H = atoi(optarg);
                 break;
             case 'M':
-                off_line = (atoi(optarg) > 0) ;
+                wdr_mode = atoi(optarg);
                 break;
             case '?':
                 usage(argv[0]);
@@ -428,21 +245,23 @@ int main(int argc, char *argv[])
         }
     }
 
+    if (wdr_mode == 1) {
+        _wdr_mode = WDR_MODE_2To1_FRAME;
+        _fmt_code = MEDIA_BUS_FMT_SRGGB10_1X10;
+    } else if (wdr_mode == 2) {
+        _wdr_mode = ISP_SDR_DCAM_MODE;
+        _fmt_code = MEDIA_BUS_FMT_SRGGB12_1X12;
+    } else {
+        _wdr_mode = WDR_MODE_NONE;
+        _fmt_code = MEDIA_BUS_FMT_SRGGB12_1X12;
+    }
+
     IspMgr* ispmgr = new IspMgr(0);
 
     struct config_param tparam_raw = {
         .mediadevname = v4l2mediadevname,
-
-#if defined (DUAL_CAMERA)
-        .fmt_code   = MEDIA_BUS_FMT_SRGGB12_1X12,
-        .wdr_mode   = (off_line ? ISP_SDR_DCAM_MODE : WDR_MODE_NONE),
-#elif defined (WDR_ENABLE)
-        .fmt_code   = MEDIA_BUS_FMT_SBGGR10_1X10,//MEDIA_BUS_FMT_SRGGB12_1X12,//
-        .wdr_mode   = WDR_MODE_2To1_LINE,//WDR_MODE_2To1_LINE,
-#else
-        .fmt_code   = MEDIA_BUS_FMT_SRGGB12_1X12,//
-        .wdr_mode   = WDR_MODE_NONE,
-#endif
+        .fmt_code   = _fmt_code,
+        .wdr_mode   = _wdr_mode,
         .ispmgr     = ispmgr,
         .fps        = fps,
     };

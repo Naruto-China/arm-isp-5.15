@@ -95,6 +95,7 @@ class IspMgr {
     int                                mId;
     std::mutex                              mLock;
     bool                               mStart;
+    bool                               mWdrEnable;
     struct media_stream*               mMediaStream  = nullptr;
     struct sensorConfig*               mSensorConfig = nullptr;
     int                                mFlushFd[2];

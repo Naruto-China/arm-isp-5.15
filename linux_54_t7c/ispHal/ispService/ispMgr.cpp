@@ -80,6 +80,7 @@ IspMgr::IspMgr(int id) {
     mId = id;
     mStart = false;
     mNeedStopispThread = false;
+    mWdrEnable = false;
 }
 
 IspMgr::~IspMgr() {
@@ -149,7 +150,11 @@ int IspMgr::configure(struct media_stream *stream, int wdr, aisp_calib_info_t *o
         ERR("Failed to matchSensorConfig");
         return -1;
     }
-    cmos_set_sensor_entity(mSensorConfig, mMediaStream->sensor_ent, wdr);
+    if (wdr == WDR_MODE_2To1_FRAME) {
+        cmos_set_sensor_entity(mSensorConfig, mMediaStream->sensor_ent, 1);
+        mWdrEnable = true;
+    } else
+        cmos_set_sensor_entity(mSensorConfig, mMediaStream->sensor_ent, 0);
     cmos_sensor_control_cb(mSensorConfig, &mPstAlgCtx.stSnsExp);
     cmos_get_sensor_calibration(mSensorConfig, mMediaStream->sensor_ent, &mCalibInfo);
     return rc;
@@ -591,14 +596,16 @@ bool IspMgr::threadLoop(void * _ispmgr) {
             ERR ("[params] error: queue buffer");
             break;
         }
-        char value[1024*3];
-        memset(value, 0 ,sizeof(value));
-        property_get_str(USER_SET_EXP_TIME, value, "999999999");
-        int user_set_value = atoi(value);
-        if (user_set_value > 544 && user_set_value < 16000) {
-            ispmgr->set_exposure_time(user_set_value);
-        } else {
-            ispmgr->set_exposure_time(33000);
+        if (!(ispmgr->mWdrEnable)) {
+            char value[1024*3];
+            memset(value, 0 ,sizeof(value));
+            property_get_str(USER_SET_EXP_TIME, value, "999999999");
+            int user_set_value = atoi(value);
+            if (user_set_value > 544 && user_set_value < 16000) {
+                ispmgr->set_exposure_time(user_set_value);
+            } else {
+                ispmgr->set_exposure_time(33000);
+            }
         }
         break;
     } while(1);
