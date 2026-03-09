@@ -147,7 +147,7 @@ int cmos_get_ae_default_imx678(int ViPipe, ALG_SENSOR_DEFAULT_S *pstAeSnsDft)
 
 void cmos_again_calc_table_imx678(int ViPipe, uint32_t *pu32AgainLin, uint32_t *pu32AgainDb)
 {
-    INFO("cmos_again_calc_table: %d, %d\n", *pu32AgainLin, *pu32AgainDb);
+    // INFO("cmos_again_calc_table: %d, %d\n", *pu32AgainLin, *pu32AgainDb);
     uint32_t again_reg;
     uint32_t u32AgainDb;
 
@@ -155,7 +155,7 @@ void cmos_again_calc_table_imx678(int ViPipe, uint32_t *pu32AgainLin, uint32_t *
     again_reg = ((u32AgainDb * 20) >> LOG2_GAIN_SHIFT); //Setting value: Gain [dB] * 10/3
 
     again_reg = (uint32_t)(again_reg);
-    INFO("set sensor reg value %d", again_reg);
+    // INFO("set sensor reg value %d", again_reg);
     if (again_reg > 720 / 3) //72dB, 0.3dB step.
         again_reg = 720 / 3;
 
@@ -179,7 +179,7 @@ void cmos_inttime_calc_table_imx678(int ViPipe, uint32_t pu32ExpL, uint32_t pu32
 
     uint32_t shutter_time_lines_short = pu32ExpS >> SHUTTER_TIME_SHIFT;
 
-    INFO("expoL : %d, exposS : %d\n", shutter_time_lines, shutter_time_lines_short);
+    // INFO("expoL : %d, exposS : %d\n", shutter_time_lines, shutter_time_lines_short);
     //shutter_time_lines = shutter_time_lines_short;
     if (sensor.enWDRMode == 0) {
         if (shutter_time_lines > (shutter_time_line_each_frame - 3))
@@ -200,7 +200,7 @@ void cmos_inttime_calc_table_imx678(int ViPipe, uint32_t pu32ExpL, uint32_t pu32
         if (shutter_time_lines_short < 5)
             shutter_time_lines_short = 5;
 
-        INFO("expoL : %d, exposS : %d\n", shutter_time_lines, shutter_time_lines_short);
+        // INFO("expoL : %d, exposS : %d\n", shutter_time_lines, shutter_time_lines_short);
         // SHR0 reg value = 2*vmax - exposure lines
         shutter_time_lines = shutter_time_line_each_frame * 2  - shutter_time_lines; //474
         // now shutter_time_lines is reg value.
@@ -214,14 +214,14 @@ void cmos_inttime_calc_table_imx678(int ViPipe, uint32_t pu32ExpL, uint32_t pu32
         if (shutter_time_lines <  (141 + 4))
             shutter_time_lines =  (141 + 4);
 
-        INFO("expoL : %d, exposS : %d\n", shutter_time_lines, shutter_time_lines_short);
+        // INFO("expoL : %d, exposS : %d\n", shutter_time_lines, shutter_time_lines_short);
     }
 
     if (sensor.snsAlgInfo.u32Inttime[0][0] != shutter_time_lines || sensor.snsAlgInfo.u32Inttime[1][0] != shutter_time_lines_short) {
         sensor.snsAlgInfo.u16IntTimeCnt = sensor.snsAlgInfo.integration_time_apply_delay + 1;
         sensor.snsAlgInfo.u32Inttime[0][0] = shutter_time_lines;
         sensor.snsAlgInfo.u32Inttime[1][0] = shutter_time_lines_short;
-        INFO("expoL : %d, exposS : %d\n", shutter_time_lines, shutter_time_lines_short);
+        // INFO("expoL : %d, exposS : %d\n", shutter_time_lines, shutter_time_lines_short);
     }
 }
 
@@ -275,7 +275,7 @@ void cmos_alg_update_imx678(int ViPipe)
             struct v4l2_ext_control gain;
             gain.id = V4L2_CID_GAIN;
             gain.value = sensor.snsAlgInfo.u32AGain[sensor.snsAlgInfo.gain_apply_delay];
-            INFO("gain value = %d \n",gain.value);
+            // INFO("gain value = %d \n",gain.value);
             v4l2_subdev_set_ctrls(sensor.sensor_ent, &gain, 1);
         }
 
@@ -287,13 +287,13 @@ void cmos_alg_update_imx678(int ViPipe)
                 struct v4l2_ext_control expo;
                 expo.id = V4L2_CID_EXPOSURE;
                 expo.value = shutter_time_lines;
-                INFO("expo.value = %d \n",expo.value);
+                // INFO("expo.value = %d \n",expo.value);
                 v4l2_subdev_set_ctrls(sensor.sensor_ent, &expo, 1);
             }
 
             if (sensor.enWDRMode) {
                 shutter_time_lines_short = sensor.snsAlgInfo.u32Inttime[1][sensor.snsAlgInfo.integration_time_apply_delay];
-                INFO("expoL : %d, exposS : %d\n", shutter_time_lines, shutter_time_lines_short);
+                // INFO("expoL : %d, exposS : %d\n", shutter_time_lines, shutter_time_lines_short);
                 struct v4l2_ext_control expo;
                 expo.id = V4L2_CID_EXPOSURE;
                 expo.value = (shutter_time_lines_short << 16) | shutter_time_lines;

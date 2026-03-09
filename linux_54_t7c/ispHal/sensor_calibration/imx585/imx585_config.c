@@ -135,7 +135,7 @@ void cmos_again_calc_table_imx585(int ViPipe, uint32_t *pu32AgainLin, uint32_t *
     again_reg = ((u32AgainDb * 20) >> LOG2_GAIN_SHIFT); //Setting value: Gain [dB] * 10/3
 
     again_reg = (uint32_t)(again_reg);
-    INFO("set sensor reg value %d", again_reg);
+    // INFO("set sensor reg value %d", again_reg);
     if (again_reg > 720 / 3) //72dB, 0.3dB step.
         again_reg = 720 / 3;
 
@@ -159,8 +159,8 @@ void cmos_inttime_calc_table_imx585(int ViPipe, uint32_t pu32ExpL, uint32_t pu32
 
     uint32_t shutter_time_lines_short = pu32ExpS >> SHUTTER_TIME_SHIFT;
 
-    INFO("expo: %d\n", shutter_time_lines);
-    INFO("expoL : %d, exposS : %d\n", shutter_time_lines, shutter_time_lines_short);
+    // INFO("expo: %d\n", shutter_time_lines);
+    // INFO("expoL : %d, exposS : %d\n", shutter_time_lines, shutter_time_lines_short);
     if (sensor.enWDRMode == 0) {
         if (shutter_time_lines > shutter_time_line_each_frame)
             shutter_time_lines = shutter_time_line_each_frame;
@@ -176,14 +176,14 @@ void cmos_inttime_calc_table_imx585(int ViPipe, uint32_t pu32ExpL, uint32_t pu32
             shutter_time_lines_short = 10;
         shutter_time_lines_short = 78 - shutter_time_lines_short; //rhs1=78
         shutter_time_lines = shutter_time_line_each_frame * 2  - shutter_time_lines;
-        INFO("expoL : %d, exposS : %d\n", shutter_time_lines, shutter_time_lines_short);
+        // INFO("expoL : %d, exposS : %d\n", shutter_time_lines, shutter_time_lines_short);
     }
 
     if (sensor.snsAlgInfo.u32Inttime[0][0] != shutter_time_lines || sensor.snsAlgInfo.u32Inttime[1][0] != shutter_time_lines_short) {
         sensor.snsAlgInfo.u16IntTimeCnt = sensor.snsAlgInfo.integration_time_apply_delay + 1;
         sensor.snsAlgInfo.u32Inttime[0][0] = shutter_time_lines;
         sensor.snsAlgInfo.u32Inttime[1][0] = shutter_time_lines_short;
-        INFO("expoL : %d, exposS : %d\n", shutter_time_lines, shutter_time_lines_short);
+        // INFO("expoL : %d, exposS : %d\n", shutter_time_lines, shutter_time_lines_short);
     }
 }
 
