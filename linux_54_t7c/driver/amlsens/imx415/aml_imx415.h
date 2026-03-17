@@ -70,6 +70,7 @@ struct imx415 {
 	int status;
 	struct mutex lock;
 	int fps;
+	atomic_t open_count;
 };
 
 struct imx415_pixfmt {
