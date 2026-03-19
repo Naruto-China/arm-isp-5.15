@@ -427,7 +427,7 @@ int IspMgr::set_awb(int awb) {
   return 0;
 }
 
-int IspMgr::set_csc(int brightness, int contrast) {
+int IspMgr::set_csc(int brightness, int contrast, int saturation) {
   aisp_api_type_t param;
   aml_isp_csc_attr data;
   aisp_api_type_t *api_type = &param;
@@ -439,12 +439,14 @@ int IspMgr::set_csc(int brightness, int contrast) {
   api_type->pData = (uint32_t *)&data;
   (IspMgr::mIspIF.algFwInterface)(mId, api_type);
 
-  if (brightness > 0 || contrast > 0) {
+  if (brightness > 0 || contrast > 0 || saturation > 0) {
       attr->csc_enable = 1;
       if (brightness > 0)
         attr->glb_brightness = brightness;
       if (contrast > 0)
         attr->glb_contrast  = contrast;
+      if (saturation > 0)
+        attr->glb_sturation = saturation;
   }
   api_type->u8Direction = AML_CMD_SET;
   (IspMgr::mIspIF.algFwInterface)(mId, api_type);
@@ -647,7 +649,7 @@ bool IspMgr::threadLoop(void * _ispmgr) {
         }
         
         char value[1024*3];
-        int br, constrast;
+        int br, constrast,saturation;
         int user_set_value;
 
         if (!(ispmgr->mWdrEnable)) {
@@ -674,7 +676,10 @@ bool IspMgr::threadLoop(void * _ispmgr) {
         memset(value, 0 ,sizeof(value));
         property_get_str(USER_SET_CONTRAST, value, "-1");
         constrast = user_set_value = atoi(value);
-        ispmgr->set_csc(br, constrast);
+        memset(value, 0 ,sizeof(value));
+        property_get_str(USER_SET_SATURATION, value, "-1");
+        saturation = user_set_value = atoi(value); 
+        ispmgr->set_csc(br, constrast, saturation);
         break;
     } while(1);
     //ERR("threadLoop-");

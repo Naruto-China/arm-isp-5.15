@@ -29,6 +29,7 @@
 #define USER_SET_AWB         "camera.awb"
 #define USER_SET_BRIGHTNESS         "camera.brightness"
 #define USER_SET_CONTRAST         "camera.contrast"
+#define USER_SET_SATURATION "camera.saturation"
 #ifdef __cplusplus
 extern "C" {
 #endif

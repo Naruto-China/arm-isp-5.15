@@ -42,12 +42,14 @@ void usage(char * prog){
     INFO(" example   : property -t 1 -e 33000\n");
     INFO("    t : set or get: 1 set 0 get\n");
     INFO("    e : exposuretime\n");
+    INFO("    s : saturation\n");
 }
 const char* keyMap[] = {
     USER_SET_EXP_TIME,
     USER_SET_AWB,
     USER_SET_BRIGHTNESS,
     USER_SET_CONTRAST,
+    USER_SET_SATURATION,
 };
 int main(int argc, char *argv[])
 {
@@ -63,7 +65,7 @@ int main(int argc, char *argv[])
     int c;
 
     while (optind < argc) {
-        if ((c = getopt (argc, argv, "t:e:w:b:c:")) != -1) {
+        if ((c = getopt (argc, argv, "t:e:w:b:c:s:")) != -1) {
             switch (c) {
             case 't':
                 ops_type = atoi(optarg);
@@ -82,6 +84,10 @@ int main(int argc, char *argv[])
                 break;
             case 'c':
                 keyMap_idx = 3;
+                usr_value = atoi(optarg);
+                break;
+            case 's':
+                keyMap_idx = 4;
                 usr_value = atoi(optarg);
                 break;
             case '?':
