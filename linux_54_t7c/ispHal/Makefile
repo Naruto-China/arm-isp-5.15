@@ -4,7 +4,7 @@ define module_clean
     make -C $(LOCAL_PATH)/$(1) clean
 endef
 
-.PHONY: clean media-v4l2_clean sensor_calibration_clean v4l2_test_media_clean ispService_clean lens_clean propertyService_clean
+.PHONY: clean media-v4l2_clean sensor_calibration_clean v4l2_test_media_clean ispService_clean lens_clean
 
 clean:
 	$(call module_clean,media-v4l2)
@@ -12,11 +12,9 @@ clean:
 	$(call module_clean,v4l2_test_media)
 	$(call module_clean,ispService)
 	$(call module_clean,lens)
-	$(call module_clean,propertyService)
 	@rm -rf $(LOCAL_PATH)/v4l2_test_media/v4l2_test_raw.o
 	@rm -rf $(LOCAL_PATH)/ispService/ispMgr.o
 	@rm -rf $(LOCAL_PATH)/ispService/ispService.o
-	@rm -rf $(LOCAL_PATH)/propertyService/propertyService.o
 
 media-v4l2_clean:
 	$(call module_clean,media-v4l2)
@@ -33,6 +31,3 @@ ispService_clean:
 	@rm -rf $(LOCAL_PATH)/ispService/ispService.o
 lens_clean:
 	$(call module_clean,lens)
-propertyService_clean:
-	$(call module_clean,propertyService)
-	@rm -rf $(LOCAL_PATH)/propertyService/propertyService.o

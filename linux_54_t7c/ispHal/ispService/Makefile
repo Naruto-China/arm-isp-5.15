@@ -27,7 +27,7 @@ all: $(TARGET)
 	$(CC) -c $(CFLAGS) $< -o $(OUT_DIR)/$@
 
 $(TARGET): $(OBJS)
-	$(CXX) $(LDFLAGS) $(patsubst %,$(OUT_DIR)/%,$^) -o $(OUT_DIR)/$@
+	$(CXX) $(patsubst %,$(OUT_DIR)/%,$^) -o $(OUT_DIR)/$@ $(LDFLAGS)
 
 clean:
 	rm -rf $(patsubst %,$(OUT_DIR)/%,${OBJS}) $(OUT_DIR)/$(TARGET)

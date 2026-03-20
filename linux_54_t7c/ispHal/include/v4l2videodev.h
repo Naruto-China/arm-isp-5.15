@@ -10,6 +10,8 @@
 #ifndef  V4L2_VIDEO_DEV_H
 #define  V4L2_VIDEO_DEV_H
 
+#include <stdint.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif

@@ -12,6 +12,7 @@
 #define __SUBDEV_H__
 
 #include <linux/v4l2-subdev.h>
+#include <stdint.h>
 
 struct media_entity;
 
